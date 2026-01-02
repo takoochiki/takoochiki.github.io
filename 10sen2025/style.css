@@ -1,0 +1,232 @@
+@charset "UTF-8";
+
+body { 
+    font-family: "Helvetica Neue", Arial, "Hiragino Kaku Gothic ProN", "Hiragino Sans", Meiryo, sans-serif; 
+    background-color: #f4f6f8; 
+    color: #333; 
+    margin: 0; 
+    padding: 10px; 
+}
+
+.container { 
+    max-width: 1000px; 
+    margin: 0 auto; 
+    background: #fff; 
+    padding: 15px; 
+    box-shadow: 0 4px 6px rgba(0,0,0,0.1); 
+    border-radius: 8px; 
+}
+
+h1 { 
+    text-align: center; 
+    color: #2c3e50; 
+    border-bottom: 2px solid #eaeff5; 
+    padding-bottom: 10px; 
+    margin-bottom: 15px;
+    font-size: 1.5em; 
+}
+
+.meta-info { 
+    text-align: right; 
+    color: #7f8c8d; 
+    font-size: 0.8em; 
+    margin-bottom: 10px; 
+}
+
+.video-card { 
+    margin-bottom: 15px; 
+    border: 1px solid #eaeff5; 
+    border-radius: 6px; 
+    overflow: hidden; 
+}
+
+.video-header { 
+    background-color: #f8f9fa; 
+    padding: 12px;
+    border-bottom: 1px solid #eaeff5; 
+    display: flex; 
+    justify-content: space-between; 
+    align-items: center; 
+    cursor: pointer; 
+    user-select: none;
+    transition: background-color 0.2s;
+}
+
+.video-header:hover, .video-header:active {
+    background-color: #e2e6ea;
+}
+
+.video-title { 
+    font-size: 1.05em; 
+    font-weight: bold; 
+    margin: 0; 
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    flex-grow: 1; /* Allow title to take space */
+    margin-right: 10px;
+}
+
+.video-id-badge {
+    font-size: 0.75em;
+    color: #666;
+    font-weight: normal;
+    background: #eee;
+    padding: 2px 5px;
+    border-radius: 3px;
+    white-space: nowrap;
+}
+
+.video-title a { 
+    color: #0366d6; 
+    text-decoration: none; 
+    word-break: break-word; /* Ensure deep linking text doesn't flow out */
+}
+
+.video-title a:hover { 
+    text-decoration: underline; 
+}
+
+.vote-pill { 
+    background-color: #28a745; 
+    color: white; 
+    padding: 4px 10px; 
+    border-radius: 12px; 
+    font-size: 0.85em; 
+    font-weight: bold; 
+    white-space: nowrap;
+    flex-shrink: 0; /* Prevent shrinking */
+}
+
+.comments-table { 
+    width: 100%; 
+    border-collapse: collapse; 
+    display: table; 
+}
+
+.comments-table.collapsed {
+    display: none;
+}
+
+.comments-table th, .comments-table td { 
+    padding: 8px 10px; 
+    text-align: left; 
+    border-bottom: 1px solid #f1f1f1; 
+    font-size: 0.95em;
+    vertical-align: top;
+}
+
+.comments-table th { 
+    background-color: #fff; 
+    font-weight: 600; 
+    color: #555; 
+}
+
+.th-selector { width: 15%; min-width: 100px; }
+.th-comment { width: 85%; }
+
+.comments-table tr:last-child td { 
+    border-bottom: none; 
+}
+
+.selector-link { 
+    font-weight: bold; 
+    color: #444; 
+    text-decoration: none; 
+    display: block; /* Larger touch target */
+}
+
+.selector-link:hover { 
+    color: #0366d6; 
+    text-decoration: underline; 
+}
+
+.comment-text { 
+    white-space: pre-wrap; 
+    line-height: 1.5; 
+    color: #24292e; 
+    word-break: break-word;
+}
+
+.no-comment { 
+    color: #959da5; 
+    font-style: italic; 
+}
+
+.toggle-icon {
+    margin-right: 8px;
+    font-size: 0.8em;
+    color: #888;
+    transition: transform 0.2s;
+    flex-shrink: 0;
+}
+
+.collapsed-icon {
+    transform: rotate(-90deg);
+}
+
+/* Mobile Optimizations */
+@media (max-width: 600px) {
+    body {
+        padding: 5px;
+    }
+    .container {
+        padding: 10px;
+    }
+    h1 {
+        font-size: 1.2em;
+    }
+    
+    .video-header { 
+        align-items: flex-start; /* Align closer to top if wrapped */
+    }
+    
+    .video-title {
+        flex-direction: column; /* Stack Title and ID */
+        gap: 2px;
+        align-items: flex-start;
+    }
+    
+    .video-id-badge {
+        font-size: 0.7em;
+        padding: 1px 4px;
+    }
+
+    /* Change table to card-like stack for better readability */
+    .comments-table, .comments-table thead, .comments-table tbody, .comments-table th, .comments-table td, .comments-table tr { 
+        display: block; 
+    }
+    
+    /* Hide headers */
+    .comments-table thead tr { 
+        position: absolute;
+        top: -9999px;
+        left: -9999px;
+    }
+    
+    .comments-table tr { 
+        margin-bottom: 10px;
+        border-bottom: 1px solid #eee;
+    }
+    
+    .comments-table td { 
+        /* Behave like a "row" */
+        border: none;
+        position: relative;
+        padding: 4px 0;
+    }
+
+    .th-selector, .th-comment { width: 100%; min-width: 0; }
+    
+    .selector-link {
+        color: #0366d6; /* Make link color more obvious */
+        margin-bottom: 2px;
+    }
+    
+    .comment-text {
+        font-size: 0.95em;
+        background: #f9f9f9;
+        padding: 8px;
+        border-radius: 4px;
+    }
+}
