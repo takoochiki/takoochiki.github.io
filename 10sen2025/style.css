@@ -152,7 +152,8 @@ h1 {
     font-weight: bold;
     color: #444;
     text-decoration: none;
-    display: block;
+    display: inline-block;
+    /* Changed from block to inline-block for text-only link feel */
 }
 
 .selector-link:hover {
@@ -240,7 +241,8 @@ h1 {
     .comments-table td {
         border: none;
         position: relative;
-        padding: 4px 0;
+        padding: 4px 5px;
+        /* Added side padding for mobile */
     }
 
     .th-selector,
@@ -253,6 +255,8 @@ h1 {
         color: #0366d6;
         margin-bottom: 2px;
         font-size: 0.9em;
+        margin-left: 2px;
+        /* Slight adjustment for alignment */
     }
 
     .comment-text {
