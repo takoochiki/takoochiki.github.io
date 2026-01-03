@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="ja">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Takoochiki</title>
+    <link rel="stylesheet" href="style.css">
+    <!-- Google Fonts: Playwrite USA Modern & M PLUS 1p (for main text) -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link
+        href="https://fonts.googleapis.com/css2?family=M+PLUS+1p:wght@800;900&family=Playwrite+US+Modern:wght@100..400&display=swap"
+        rel="stylesheet">
+</head>
+
+<body>
+
+    <div class="container">
+        <!-- Top-Left: Fluttering Text -->
+        <div class="logo-container">
+            <!-- Align to Top (YMin) to fix vertical position issue -->
+            <svg viewBox="0 0 1000 400" class="fluttering-text" preserveAspectRatio="xMidYMin meet">
+                <defs>
+                    <!-- Turbulence Filter for Waving Effect (Reduced intensity) -->
+                    <filter id="flutter" x="-20%" y="-20%" width="140%" height="140%">
+                        <feTurbulence type="fractalNoise" baseFrequency="0.008" numOctaves="2" result="turbulence">
+                            <!-- Added keyTimes and keySplines for smoother ease-in-out looping to prevent stutter -->
+                            <animate attributeName="baseFrequency" dur="10s"
+                                values="0.008 0.002; 0.002 0.01; 0.008 0.002" keyTimes="0; 0.5; 1" calcMode="spline"
+                                keySplines="0.45 0 0.55 1; 0.45 0 0.55 1" repeatCount="indefinite" />
+                        </feTurbulence>
+                        <!-- Remove horizontal displacement by setting Red channel to constant 0.5 -->
+                        <feColorMatrix type="matrix" in="turbulence" result="fixedTurbulence" values="0 0 0 0 0.5
+                                    0 1 0 0 0
+                                    0 0 1 0 0
+                                    0 0 0 1 0" />
+                        <feDisplacementMap in="SourceGraphic" in2="fixedTurbulence" scale="10" xChannelSelector="R"
+                            yChannelSelector="G" />
+                    </filter>
+                </defs>
+
+                <!-- Dynamic Path for Math Deformation -->
+                <path id="math-curve" fill="none" />
+
+                <!-- Text on Path -->
+                <text class="outlined-text" filter="url(#flutter)">
+                    <textPath href="#math-curve" startOffset="0%" text-anchor="start">たこーちき</textPath>
+                </text>
+            </svg>
+        </div>
+
+        <!-- Bottom-Right: Profile Links -->
+        <div class="profile-links">
+            <a href="https://x.com/usual_tweet" target="_blank" class="link-item">x.com/usual_tweet</a>
+            <a href="https://www.nicovideo.jp/user/95288566" target="_blank"
+                class="link-item">nicovideo.jp/user/95288566</a>
+            <a href="https://www.youtube.com/@takoochiki" target="_blank" class="link-item">youtube.com/@takoochiki</a>
+            <a href="https://note.com/takoo" target="_blank" class="link-item">note.com/takoo</a>
+            <a href="https://scrapbox.io/takoochiki-imp/" target="_blank"
+                class="link-item">scrapbox.io/takoochiki-imp/</a>
+        </div>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+
+</html>
