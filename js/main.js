@@ -9,7 +9,7 @@ const Engine = Matter.Engine,
     Events = Matter.Events;
 
 // ─── Engine Setup ───
-const engine = Engine.create();
+const engine = Engine.create({ enableSleeping: true });
 const world = engine.world;
 engine.world.gravity.y = 0.5;
 
@@ -46,6 +46,7 @@ const logoBody = Bodies.rectangle(
         friction: 0.05,
         frictionAir: 0.015,
         density: 0.005,
+        isStatic: true,
         render: { visible: false }
     }
 );
@@ -98,9 +99,19 @@ const mouseConstraint = MouseConstraint.create(engine, {
 World.add(world, mouseConstraint);
 render.mouse = mouse;
 
+// ─── Interaction: Click to start physics ───
+Events.on(mouseConstraint, 'mousedown', function (event) {
+    const found = Matter.Query.point([logoBody], event.mouse.position);
+    if (found.length > 0 && logoBody.isStatic) {
+        Matter.Body.setStatic(logoBody, false);
+        // 開始時に少し上に跳ねさせる
+        Matter.Body.setVelocity(logoBody, { x: 0, y: -5 });
+    }
+});
+
 // ─── Load SVG Image ───
 const logoImg = new Image();
-logoImg.src = 'tako_logo.svg';
+logoImg.src = 'tako_logo_2.svg';
 
 // ─── Arc Bending State (Spring Physics) ───
 let currentBend = 0;
@@ -111,10 +122,31 @@ const BEND_FACTOR = 500;      // Angular velocity → target bend multiplier (ne
 const BEND_STIFFNESS = 0.2;   // Spring stiffness (how fast it chases the target)
 const BEND_DAMPING = 0.85;    // Velocity damping per frame (lower = more wobble)
 const MAX_BEND = 60;          // Maximum bend in pixels to prevent extreme distortion
-const NUM_STRIPS = 40;        // Number of strips for smooth continuous rendering
+const NUM_STRIPS = 30;        // Number of strips for smooth continuous rendering
 
 // ─── Physics Update: Update spring simulation separately from rendering ───
 Events.on(engine, 'afterUpdate', function () {
+    // マウスカーソルの制御（ロゴホバー時のみ手のひら）
+    const isHovering = Matter.Query.point([logoBody], mouseConstraint.mouse.position).length > 0;
+    const isDragging = mouseConstraint.body === logoBody;
+    if (isDragging) {
+        render.canvas.style.cursor = 'grabbing';
+    } else if (isHovering) {
+        render.canvas.style.cursor = 'pointer'; // クリックできることを示す指マーク
+    } else {
+        render.canvas.style.cursor = 'default';
+    }
+
+    // 画面外からの復帰処理
+    const pos = logoBody.position;
+    const pad = 200; // 許容する画面外の余白
+    if (pos.x < -pad || pos.x > window.innerWidth + pad ||
+        pos.y < -pad || pos.y > window.innerHeight + pad) {
+        Matter.Body.setPosition(logoBody, { x: window.innerWidth / 2, y: window.innerHeight / 2 - 100 });
+        Matter.Body.setVelocity(logoBody, { x: 0, y: 0 });
+        Matter.Body.setAngularVelocity(logoBody, 0);
+    }
+
     const angVel = logoBody.angularVelocity;
 
     // Spring physics for wobbly bend
@@ -139,14 +171,22 @@ Events.on(render, 'afterRender', function () {
     // Parabolic arc approximation: y(x) = curvature * x^2 / 2
     // currentBend = max y-offset at the edges (x = ±logoWidth/2)
     const halfW = logoWidth / 2;
-    const curvature = (2 * currentBend) / (halfW * halfW);
-
-    const stripW = logoWidth / NUM_STRIPS;
-    const srcStripW = logoImg.naturalWidth / NUM_STRIPS;
 
     ctx.save();
     ctx.translate(pos.x, pos.y);
     ctx.rotate(angle);
+
+    // 軽量化: 変形がほとんどない場合は分割描画をスキップして1回で通常描画
+    if (Math.abs(currentBend) < 0.5) {
+        ctx.drawImage(logoImg, -halfW, -logoHeight / 2, logoWidth, logoHeight);
+        ctx.restore();
+        return;
+    }
+
+    const curvature = (2 * currentBend) / (halfW * halfW);
+
+    const stripW = logoWidth / NUM_STRIPS;
+    const srcStripW = logoImg.naturalWidth / NUM_STRIPS;
 
     for (let i = 0; i < NUM_STRIPS; i++) {
         // x position of this strip's center relative to logo center
