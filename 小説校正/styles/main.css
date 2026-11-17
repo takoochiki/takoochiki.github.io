@@ -1,0 +1,206 @@
+/* ==========================================================================
+   テーマ変数・リセット・全体レイアウト骨格
+   ========================================================================== */
+
+:root {
+  --bg-app: #f4f1ea;
+  --bg-surface: #fdfbf7;
+  --bg-elevated: #ffffff;
+  --bg-muted: #ebe6dc;
+  --bg-hover: #f2ede3;
+
+  --text-primary: #1f2428;
+  --text-secondary: #586069;
+  --text-muted: #7b848e;
+
+  --border-color: #dcd5c7;
+  --border-strong: #c5bca9;
+
+  --accent: #2c5f8a;
+  --accent-hover: #214a6d;
+  --accent-soft: rgba(44, 95, 138, 0.12);
+
+  --error-color: #c93b3b;
+  --error-bg: rgba(201, 59, 59, 0.16);
+  --error-bg-hover: rgba(201, 59, 59, 0.28);
+
+  --warning-color: #b7791f;
+  --warning-bg: rgba(214, 158, 46, 0.22);
+  --warning-bg-hover: rgba(214, 158, 46, 0.36);
+
+  --success-color: #2f855a;
+  --success-bg: rgba(47, 133, 90, 0.14);
+
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.08);
+  --shadow-lg: 0 12px 32px rgba(0, 0, 0, 0.16);
+
+  --ui-font: 'Yu Gothic UI', 'Hiragino Kaku Gothic ProN', 'Meiryo', system-ui, sans-serif;
+  --manuscript-font: 'Shippori Mincho', 'Yu Mincho', 'YuMincho', 'Hiragino Mincho ProN', serif;
+  --manuscript-font-size: 17px;
+  --manuscript-line-height: 1.9;
+}
+
+[data-theme='dark'] {
+  --bg-app: #16181c;
+  --bg-surface: #1e2127;
+  --bg-elevated: #262a32;
+  --bg-muted: #2c313a;
+  --bg-hover: #323844;
+
+  --text-primary: #e6e4de;
+  --text-secondary: #a5adb8;
+  --text-muted: #7d8590;
+
+  --border-color: #353b45;
+  --border-strong: #4a5260;
+
+  --accent: #58a6ff;
+  --accent-hover: #79b8ff;
+  --accent-soft: rgba(88, 166, 255, 0.16);
+
+  --error-color: #ff6b6b;
+  --error-bg: rgba(255, 107, 107, 0.22);
+  --error-bg-hover: rgba(255, 107, 107, 0.35);
+
+  --warning-color: #ecc94b;
+  --warning-bg: rgba(236, 201, 75, 0.2);
+  --warning-bg-hover: rgba(236, 201, 75, 0.34);
+
+  --success-color: #68d391;
+  --success-bg: rgba(104, 211, 145, 0.16);
+
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.35);
+  --shadow-lg: 0 14px 36px rgba(0, 0, 0, 0.55);
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: var(--bg-app);
+  color: var(--text-primary);
+  font-family: var(--ui-font);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.hidden {
+  display: none !important;
+}
+
+.spacer {
+  flex: 1 1 auto;
+}
+
+/* アプリシェル全体 */
+.app-shell {
+  display: flex;
+  flex-direction: column;
+  width: 100vw;
+  height: 100vh;
+}
+
+/* ツールバー */
+.app-toolbar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 7px 12px;
+  background: var(--bg-elevated);
+  border-bottom: 1px solid var(--border-color);
+  box-shadow: var(--shadow-sm);
+  z-index: 10;
+}
+
+.toolbar-brand {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-right: 6px;
+}
+
+.brand-mark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 6px;
+  background: var(--accent);
+  color: #fff;
+  font-family: var(--manuscript-font);
+  font-weight: 700;
+  font-size: 14px;
+}
+
+.brand-name {
+  font-weight: 700;
+  font-size: 14px;
+  letter-spacing: 0.03em;
+}
+
+.toolbar-group {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.toolbar-divider {
+  width: 1px;
+  height: 20px;
+  background: var(--border-color);
+  margin: 0 2px;
+}
+
+/* メイン領域 */
+.app-main {
+  flex: 1 1 0%;
+  display: flex;
+  min-height: 0;
+  min-width: 0;
+  overflow: hidden;
+}
+
+/* 下部ステータスバー */
+.app-statusbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 4px 12px;
+  background: var(--bg-elevated);
+  border-top: 1px solid var(--border-color);
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.status-sep {
+  color: var(--border-strong);
+}
+
+.status-strong {
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+.status-file.has-unsaved {
+  color: var(--warning-color);
+  font-weight: 600;
+}
+
+.status-muted {
+  color: var(--text-muted);
+}
+
+body.is-resizing {
+  user-select: none;
+}

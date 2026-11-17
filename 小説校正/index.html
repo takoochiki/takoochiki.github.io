@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="ja" data-theme="light">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>墨韻 - 縦書き・横書き対応 小説校正エディタ</title>
+  <link rel="stylesheet" href="./styles/main.css" />
+  <link rel="stylesheet" href="./styles/editor.css" />
+  <link rel="stylesheet" href="./styles/components.css" />
+</head>
+<body>
+  <div class="app-shell">
+    <!-- 上部ツールバー -->
+    <header class="app-toolbar" role="banner">
+      <div class="toolbar-brand">
+        <span class="brand-mark" aria-hidden="true">墨</span>
+        <span class="brand-name">小説校正エディタ</span>
+      </div>
+
+      <div class="toolbar-group" aria-label="ファイル操作">
+        <button type="button" class="btn btn-sm btn-secondary" id="btn-new-doc" title="白紙の原稿を新規作成">新規</button>
+        <button type="button" class="btn btn-sm btn-secondary" id="btn-open-txt" title="UTF-8 TXTファイルを読み込み">TXT開く</button>
+        <button type="button" class="btn btn-sm btn-primary" id="btn-save-txt" title="原稿をTXT保存 (Ctrl+S)">TXT保存</button>
+        <button type="button" class="btn btn-sm btn-ghost" id="btn-load-sample" title="サンプル原稿を読み込む">サンプル</button>
+      </div>
+
+      <div class="toolbar-divider"></div>
+
+      <div class="toolbar-group" aria-label="編集履歴">
+        <button type="button" class="btn btn-sm btn-ghost" id="btn-undo" title="元に戻す (Ctrl+Z)" disabled>↶ 戻す</button>
+        <button type="button" class="btn btn-sm btn-ghost" id="btn-redo" title="やり直す (Ctrl+Y)" disabled>↷ やり直し</button>
+      </div>
+
+      <div class="toolbar-divider"></div>
+
+      <div class="toolbar-group" aria-label="表示切替">
+        <button type="button" class="btn btn-sm btn-secondary" id="btn-writing-mode" title="縦書き/横書きを切り替え (Alt+V)">横書き中 ⇄ 縦書きへ</button>
+        <button type="button" class="btn btn-sm btn-ghost is-active" id="btn-sync-scroll" title="編集・校正領域のスクロール同期を切替">スクロール同期: ON</button>
+        <button type="button" class="btn btn-sm btn-ghost" id="btn-theme-toggle" title="ライト/ダークテーマを切替">🌙 ダーク</button>
+      </div>
+
+      <div class="toolbar-divider"></div>
+
+      <div class="toolbar-group" aria-label="支援機能・設定">
+        <button type="button" class="btn btn-sm btn-secondary" id="btn-open-variants" title="表記揺れの一括編集・辞書管理 (Alt+U)">表記統一</button>
+        <button type="button" class="btn btn-sm btn-secondary" id="btn-open-latex" title="LaTeX向けテキスト変換 (Alt+L)">LaTeX変換</button>
+        <button type="button" class="btn btn-sm btn-ghost" id="btn-open-stats" title="文字種・約物頻度・集計">統計</button>
+        <button type="button" class="btn btn-sm btn-ghost" id="btn-open-settings" title="校正ルール設定 (Alt+S)">ルール設定</button>
+        <button type="button" class="btn btn-sm btn-ghost" id="btn-open-display" title="フォント・文字サイズ・ショートカット">表示設定</button>
+      </div>
+
+      <div class="spacer"></div>
+
+      <div class="toolbar-group" aria-label="プロジェクト保存">
+        <button type="button" class="btn btn-xs btn-ghost" id="btn-open-project" title="設定・無視状態を含むプロジェクト読込">PJT読込</button>
+        <button type="button" class="btn btn-xs btn-ghost" id="btn-save-project" title="設定・無視状態を含むプロジェクト保存">PJT保存</button>
+        <button type="button" class="btn btn-xs btn-secondary" id="btn-toggle-panel">指摘パネルを隠す</button>
+      </div>
+    </header>
+
+    <!-- メイン作業領域（2画面エディタ + 指摘一覧サイドパネル） -->
+    <main class="app-main">
+      <div class="split-workspace is-horizontal" id="split-workspace">
+        <!-- 編集領域（横書き時は左、縦書き時は上） -->
+        <section class="pane editor-pane" id="editor-pane" aria-label="原稿編集領域">
+          <div class="pane-header">
+            <span class="pane-label">編集領域</span>
+            <span class="pane-hint">直接編集・ペースト・TXTドロップに対応</span>
+          </div>
+          <div class="pane-body">
+            <textarea
+              id="editor-textarea"
+              class="manuscript-textarea"
+              spellcheck="false"
+              placeholder="ここに日本語小説の原稿を入力、またはTXTファイルをドロップしてください..."
+              aria-label="小説原稿テキストエディタ"
+            ></textarea>
+          </div>
+        </section>
+
+        <!-- 分割比率リサイザー -->
+        <div
+          id="split-resizer"
+          class="split-resizer"
+          role="separator"
+          aria-label="分割比率を調整"
+          tabindex="0"
+        ></div>
+
+        <!-- 校正領域（横書き時は右、縦書き時は下） -->
+        <section class="pane proofread-pane" id="proofread-pane" aria-label="校正結果プレビュー領域">
+          <div class="pane-header">
+            <span class="pane-label">校正プレビュー（読み取り専用）</span>
+            <span class="pane-legend">
+              <span class="legend-dot legend-dot--error"></span>高確度(赤)
+              <span class="legend-dot legend-dot--warning"></span>低確度(黄)
+              <span class="legend-hint">ホバーで理由 / クリックで修正・無視</span>
+            </span>
+          </div>
+          <div class="pane-body proofread-scroll" id="proofread-scroll">
+            <div class="proofread-content" id="proofread-content"></div>
+          </div>
+        </section>
+      </div>
+
+      <!-- 指摘一覧サイドパネル -->
+      <aside class="issue-panel" id="issue-panel" aria-label="指摘一覧"></aside>
+    </main>
+
+    <!-- 下部ステータスバー -->
+    <footer class="app-statusbar" role="contentinfo">
+      <span id="status-file-name" class="status-item status-file">sample.txt</span>
+      <span class="status-sep">|</span>
+      <span id="status-char-count" class="status-item status-strong">0字</span>
+      <span class="status-sep">|</span>
+      <span id="status-engine-info" class="status-item">校正準備中...</span>
+      <div class="spacer"></div>
+      <span id="status-autosave" class="status-item status-muted">自動保存待機中</span>
+    </footer>
+  </div>
+
+  <!-- 非表示ファイル入力 -->
+  <input type="file" id="file-input-txt" accept=".txt,.text,.md,text/plain" class="hidden" />
+  <input type="file" id="file-input-project" accept=".json,application/json" class="hidden" />
+
+  <!-- ドラッグ＆ドロップオーバーレイ -->
+  <div id="drop-overlay" class="drop-overlay hidden" aria-hidden="true">
+    <div class="drop-overlay-card">
+      <div class="drop-overlay-icon">📄</div>
+      <div class="drop-overlay-text">TXT原稿 または プロジェクトJSON をドロップして読み込み</div>
+    </div>
+  </div>
+
+  <!-- HTTPサーバー経由時はES Modules、file:// 直接起動時はバンドル版を自動読込 -->
+  <script>
+    (function () {
+      var s = document.createElement('script');
+      if (window.location.protocol === 'file:') {
+        s.src = './dist/app.bundle.js';
+      } else {
+        s.type = 'module';
+        s.src = './src/main.js';
+      }
+      document.body.appendChild(s);
+    })();
+  </script>
+</body>
+</html>
