@@ -980,7 +980,16 @@
        * ルールが指摘オブジェクトを生成するための標準ファクトリ
        * @param {object} params
        */
-      createIssue({ start, end, message, suggestions = [], severityOverride, extra }) {
+      createIssue({
+        start,
+        end,
+        message,
+        suggestions = [],
+        severityOverride,
+        ruleIdOverride,
+        ruleNameOverride,
+        extra,
+      }) {
         const safeStart = Math.max(0, Math.min(start, this.text.length));
         const safeEnd = Math.max(safeStart, Math.min(end, this.text.length));
         const { line, column } = this.getLineAndCol(safeStart);
@@ -993,6 +1002,8 @@
           matchedText: this.text.slice(safeStart, safeEnd),
           suggestions,
           severityOverride,
+          ruleIdOverride,
+          ruleNameOverride,
           extra,
         };
       }
@@ -1103,11 +1114,13 @@
           for (let i = 0; i < ruleIssues.length; i++) {
             const rawIssue = ruleIssues[i];
             if (!rawIssue) continue;
+            const resolvedRuleId = rawIssue.ruleIdOverride || rule.id;
+            const resolvedRuleName = rawIssue.ruleNameOverride || rule.name;
             const severity = rawIssue.severityOverride || setting.severity || rule.defaultSeverity;
             collected.push({
-              id: `${rule.id}@${rawIssue.start}-${rawIssue.end}#${i}`,
-              ruleId: rule.id,
-              ruleName: rule.name,
+              id: `${resolvedRuleId}@${rawIssue.start}-${rawIssue.end}#${i}`,
+              ruleId: resolvedRuleId,
+              ruleName: resolvedRuleName,
               category: rule.category,
               start: rawIssue.start,
               end: rawIssue.end,
@@ -1230,14 +1243,13 @@
       { id: 'var_tsukeru', label: '付ける / つける', terms: ['付ける', 'つける'], preferred: '', boundaryCheck: true },
       { id: 'var_miru', label: '見る / 観る / 視る', terms: ['見る', '観る', '視る'], preferred: '', boundaryCheck: true },
       { id: 'var_kiku', label: '聞く / 聴く / 訊く', terms: ['聞く', '聴く', '訊く'], preferred: '', boundaryCheck: true },
-      { id: 'var_naku', label: '泣く / 鳴く', terms: ['泣く', '鳴く'], preferred: '', boundaryCheck: true },
       { id: 'var_teiru', label: 'て居る / ている', terms: ['て居る', 'ている'], preferred: '', boundaryCheck: false },
       { id: 'var_teita', label: 'て居た / ていた', terms: ['て居た', 'ていた'], preferred: '', boundaryCheck: false },
       { id: 'var_tekuru', label: 'て来る / てくる', terms: ['て来る', 'てくる'], preferred: '', boundaryCheck: false },
       { id: 'var_teiku', label: 'て行く / ていく', terms: ['て行く', 'ていく'], preferred: '', boundaryCheck: false },
       { id: 'var_temiru', label: 'て見る / てみる', terms: ['て見る', 'てみる'], preferred: '', boundaryCheck: false },
       { id: 'var_teoku', label: 'て置く / ておく', terms: ['て置く', 'ておく'], preferred: '', boundaryCheck: false },
-      { id: 'var_teshimau', label: 'て仕舞う / てしまう', terms: ['て仕舞う', 'ってしまう', 'てしまう'], preferred: '', boundaryCheck: false },
+      { id: 'var_teshimau', label: 'て仕舞う / てしまう', terms: ['て仕舞う', 'てしまう'], preferred: '', boundaryCheck: false },
       { id: 'var_tekureru', label: 'て呉れる / てくれる', terms: ['て呉れる', 'てくれる'], preferred: '', boundaryCheck: false },
       { id: 'var_temorau', label: 'て貰う / てもらう', terms: ['て貰う', 'てもらう'], preferred: '', boundaryCheck: false },
       { id: 'var_toiu', label: 'と言う / という', terms: ['と言う', 'という'], preferred: '', boundaryCheck: false },
@@ -1258,7 +1270,7 @@
       { id: 'var_tabun', label: '多分 / たぶん', terms: ['多分', 'たぶん'], preferred: '', boundaryCheck: true },
       { id: 'var_kanarazu', label: '必ず / かならず', terms: ['必ず', 'かならず'], preferred: '', boundaryCheck: false },
       { id: 'var_kitto', label: '屹度 / きっと', terms: ['屹度', 'きっと'], preferred: '', boundaryCheck: false },
-      { id: 'var_yappari', label: '矢張り / やはり / やっぱり', terms: ['矢張り', 'やはり', 'やっぱり'], preferred: '', boundaryCheck: false },
+      { id: 'var_yappari', label: '矢張り / やはり', terms: ['矢張り', 'やはり'], preferred: '', boundaryCheck: false },
       { id: 'var_chotto', label: '一寸 / ちょっと', terms: ['一寸', 'ちょっと'], preferred: '', boundaryCheck: true },
       { id: 'var_moshikashite', label: '若しかして / もしかして', terms: ['若しかして', 'もしかして'], preferred: '', boundaryCheck: false },
       { id: 'var_mattaku', label: '全く / まったく', terms: ['全く', 'まったく'], preferred: '', boundaryCheck: false },
@@ -1270,8 +1282,6 @@
       { id: 'var_shibaraku', label: '暫く / しばらく', terms: ['暫く', 'しばらく'], preferred: '', boundaryCheck: false },
       { id: 'var_sorekara', label: '其れから / それから', terms: ['其れから', 'それから'], preferred: '', boundaryCheck: false },
       { id: 'var_soredemo', label: '其れでも / それでも', terms: ['其れでも', 'それでも'], preferred: '', boundaryCheck: false },
-      { id: 'var_soko', label: '其処 / そこ', terms: ['其処', 'そこ'], preferred: '', boundaryCheck: false },
-      { id: 'var_koko', label: '此処 / ここ', terms: ['此処', 'ここ'], preferred: '', boundaryCheck: false },
       { id: 'var_doko', label: '何処 / どこ', terms: ['何処', 'どこ'], preferred: '', boundaryCheck: false },
       { id: 'var_doushite', label: '如何して / どうして', terms: ['如何して', 'どうして'], preferred: '', boundaryCheck: false },
       { id: 'var_imamade', label: '今迄 / 今まで', terms: ['今迄', '今まで'], preferred: '', boundaryCheck: false },
@@ -1285,8 +1295,6 @@
       { id: 'var_omoshiroi', label: '面白い / おもしろい', terms: ['面白い', 'おもしろい'], preferred: '', boundaryCheck: false },
       { id: 'var_tanoshii', label: '楽しい / たのしい', terms: ['楽しい', 'たのしい'], preferred: '', boundaryCheck: false },
       { id: 'var_sabishii', label: '寂しい / 淋しい', terms: ['寂しい', '淋しい'], preferred: '', boundaryCheck: false },
-      { id: 'var_atatakai', label: '暖かい / 温かい', terms: ['暖かい', '温かい'], preferred: '', boundaryCheck: false },
-      { id: 'var_hayai', label: '早い / 速い', terms: ['早い', '速い'], preferred: '', boundaryCheck: false },
       { id: 'var_nagai', label: '長い / 永い', terms: ['長い', '永い'], preferred: '', boundaryCheck: false },
       { id: 'var_computer', label: 'コンピュータ / コンピューター', terms: ['コンピュータ', 'コンピューター'], preferred: '', boundaryCheck: false },
       { id: 'var_violin', label: 'ヴァイオリン / バイオリン', terms: ['ヴァイオリン', 'バイオリン'], preferred: '', boundaryCheck: false },
@@ -1815,15 +1823,46 @@
 
         const savedVariants = this.storage.loadVariantGroups();
         if (Array.isArray(savedVariants) && savedVariants.length > 0) {
-          // 「物 / もの」(var_mono) を除外し、拡充された標準辞書の新規グループを補完する
-          const filtered = savedVariants.filter((g) => g && g.id !== 'var_mono');
+          const removedIds = new Set([
+            'var_mono',
+            'var_naku',
+            'var_hayai',
+            'var_atatakai',
+            'var_soko',
+            'var_koko',
+          ]);
+          let migrated = false;
+          const filtered = savedVariants
+            .filter((g) => {
+              if (!g || removedIds.has(g.id)) {
+                migrated = true;
+                return false;
+              }
+              return true;
+            })
+            .map((g) => {
+              if (g.id === 'var_teshimau' && Array.isArray(g.terms) && g.terms.includes('ってしまう')) {
+                migrated = true;
+                return { ...g, label: 'て仕舞う / てしまう', terms: ['て仕舞う', 'てしまう'] };
+              }
+              if (
+                g.id === 'var_yappari' &&
+                Array.isArray(g.terms) &&
+                g.terms.includes('やっぱり') &&
+                g.terms.includes('やはり')
+              ) {
+                migrated = true;
+                return { ...g, label: '矢張り / やはり', terms: ['矢張り', 'やはり'] };
+              }
+              return g;
+            });
           const existingIds = new Set(filtered.map((g) => g.id));
           const added = DEFAULT_VARIANT_GROUPS.filter((g) => !existingIds.has(g.id)).map((g) => ({
             ...g,
             terms: [...g.terms],
           }));
           this.state.variantGroups = [...filtered, ...added];
-          if (filtered.length !== savedVariants.length || added.length > 0) {
+          if (migrated || added.length > 0) {
             this.storage.saveVariantGroups(this.state.variantGroups);
           }
         } else {
@@ -5259,15 +5298,639 @@
     __exports.variantRules = variantRules;
   });
 
+  __define('src/services/SentenceEndingService.js', function (__exports, __require) {
+    /**
+     * 日本語小説の文末表現の連続検出サービス（E01〜E07）
+     * 形態素解析・外部辞書・AI を使用せず、UTF-16コードユニット位置と括弧対応解析により
+     * 文分割・文末抽出・連続区間検出・重複統合を行う。
+     */
+
+    const DEFAULT_E02_EXPRESSIONS = [
+      'のだ',
+      'のだった',
+      'のである',
+      'のです',
+      'だろう',
+      'でしょう',
+      'かもしれない',
+      'に違いない',
+      'はずだ',
+      'わけだ',
+      'と思った',
+      'と思う',
+    ];
+
+    const POLITE_ENDING_FORMS = [
+      'ませんでした',
+      'ました',
+      'ません',
+      'でした',
+      'です',
+      'ます',
+    ];
+
+    const NON_PAST_CHARS = new Set(['る', 'く', 'す', 'む', 'ぶ', 'ぬ', 'つ', 'う', 'ぐ']);
+    const KANA_END_RE = /^[\u3041-\u3096\u30A1-\u30F6ー]$/;
+    const TERMINATOR_RE = /[。！？!?]/;
+    const TRAILING_STRIP_RE = /[。！？!?\s\u3000」』）)】］〉》〕｝”'"]+$/;
+
+    const BRACKET_PAIRS = {
+      '「': '」',
+      '『': '』',
+      '（': '）',
+      '(': ')',
+      '【': '】',
+      '［': '］',
+      '〈': '〉',
+      '〔': '〕',
+      '｛': '｝',
+      '“': '”',
+    };
+
+    const CLOSE_TO_OPEN = Object.fromEntries(
+      Object.entries(BRACKET_PAIRS).map(([o, c]) => [c, o])
+    );
+
+    const DIALOGUE_OPEN_SET = new Set(['「', '『']);
+
+    class SentenceEndingService {
+      /**
+       * 連続ブロックから検査対象となる文の連なり (runs) を抽出する。
+       * - 空行・場面転換・章区切りでリセット（resetOnParagraphBreak === true 時）
+       * - 独立した会話文（`「...」` / `『...』`）は初期設定で検査除外＆地の文の連続判定をリセット
+       * - 括弧内の句点では文を分割しない
+       * - 通常の単一改行ではリセットしない
+       * @param {import('../core/RuleContext.js').RuleContext} ctx
+       * @param {{ includeDialogue?: boolean, resetOnParagraphBreak?: boolean }} opts
+       * @returns {Array<Array<{ start: number, end: number, text: string, normalizedEnd: string, isDialogue: boolean }>>}
+       */
+      extractSentenceRuns(ctx, opts = {}) {
+        const includeDialogue = Boolean(opts.includeDialogue);
+        const resetOnParagraphBreak = opts.resetOnParagraphBreak !== false;
+
+        const blocks = this._splitParagraphBlocks(ctx, resetOnParagraphBreak);
+        const allRuns = [];
+
+        for (const block of blocks) {
+          let currentRun = [];
+          const flushRun = () => {
+            if (currentRun.length > 0) {
+              allRuns.push(currentRun);
+              currentRun = [];
+            }
+          };
+
+          this._scanBlockSentences(
+            ctx.text,
+            block.start,
+            block.end,
+            includeDialogue,
+            (sentence) => {
+              currentRun.push(sentence);
+            },
+            () => {
+              flushRun();
+            }
+          );
+
+          flushRun();
+        }
+
+        return allRuns;
+      }
+
+      /**
+       * 段落・空行・場面転換・章見出しに基づいて検査ブロックを分割する
+       */
+      _splitParagraphBlocks(ctx, resetOnParagraphBreak) {
+        const lines = ctx.lines;
+        if (lines.length === 0) return [];
+
+        if (!resetOnParagraphBreak) {
+          return [{ start: 0, end: ctx.text.length }];
+        }
+
+        const blocks = [];
+        let blockStart = null;
+        let blockEnd = null;
+
+        for (const line of lines) {
+          if (line.isBlank || line.isSceneBreak || line.isHeading) {
+            if (blockStart !== null) {
+              blocks.push({ start: blockStart, end: blockEnd });
+              blockStart = null;
+              blockEnd = null;
+            }
+          } else {
+            if (blockStart === null) {
+              blockStart = line.start;
+            }
+            blockEnd = line.end;
+          }
+        }
+        if (blockStart !== null) {
+          blocks.push({ start: blockStart, end: blockEnd });
+        }
+        return blocks;
+      }
+
+      /**
+       * 対応括弧の閉じ位置をブロック内で探索する
+       */
+      _findMatchingClose(text, openIdx, limitEnd) {
+        const openCh = text[openIdx];
+        const closeCh = BRACKET_PAIRS[openCh];
+        if (!closeCh) return -1;
+
+        const stack = [closeCh];
+        for (let i = openIdx + 1; i < limitEnd; i++) {
+          const ch = text[i];
+          if (BRACKET_PAIRS[ch]) {
+            stack.push(BRACKET_PAIRS[ch]);
+          } else if (CLOSE_TO_OPEN[ch]) {
+            if (stack[stack.length - 1] === ch) {
+              stack.pop();
+              if (stack.length === 0) return i;
+            } else {
+              const idx = stack.lastIndexOf(ch);
+              if (idx !== -1) {
+                stack.splice(idx);
+                if (stack.length === 0) return i;
+              }
+            }
+          }
+        }
+        return -1;
+      }
+
+      /**
+       * 閉じ括弧の後、同じ行（\n まで）に地の文が続いているか判定する
+       */
+      _hasFollowingNarrativeOnLine(text, afterCloseIdx, limitEnd) {
+        for (let i = afterCloseIdx; i < limitEnd; i++) {
+          const ch = text[i];
+          if (ch === '\n') return false;
+          if (!/[ \t\u3000]/.test(ch)) return true;
+        }
+        return false;
+      }
+
+      /**
+       * 1ブロック内を走査して文を抽出し、会話文境界でリセットコールバックを呼ぶ
+       */
+      _scanBlockSentences(text, start, end, includeDialogue, onSentence, onReset, isDialogueCtx = false) {
+        const bracketStack = [];
+        let segStart = start;
+
+        const skipLeadingWs = (idx) => {
+          while (idx < end && /[ \t\u3000\n]/.test(text[idx])) {
+            idx++;
+          }
+          return idx;
+        };
+
+        segStart = skipLeadingWs(segStart);
+        let i = segStart;
+
+        while (i < end) {
+          const ch = text[i];
+
+          // 文先頭で独立会話括弧（`「...」` / `『...』`）に遭遇した場合の特別処理
+          if (bracketStack.length === 0 && !isDialogueCtx && DIALOGUE_OPEN_SET.has(ch) && i === segStart) {
+            const closePos = this._findMatchingClose(text, i, end);
+            if (closePos !== -1 && !this._hasFollowingNarrativeOnLine(text, closePos + 1, end)) {
+              if (includeDialogue) {
+                this._scanBlockSentences(
+                  text,
+                  i + 1,
+                  closePos,
+                  true,
+                  onSentence,
+                  onReset,
+                  true
+                );
+              } else {
+                onReset();
+              }
+              i = skipLeadingWs(closePos + 1);
+              segStart = i;
+              continue;
+            }
+          }
+
+          // 独立した丸括弧文（`（〜だった。）`）が単独行にある場合は内部を検査する
+          if (bracketStack.length === 0 && (ch === '（' || ch === '(') && i === segStart) {
+            const closePos = this._findMatchingClose(text, i, end);
+            if (closePos !== -1 && !this._hasFollowingNarrativeOnLine(text, closePos + 1, end)) {
+              this._scanBlockSentences(
+                text,
+                i + 1,
+                closePos,
+                includeDialogue,
+                onSentence,
+                onReset,
+                isDialogueCtx
+              );
+              i = skipLeadingWs(closePos + 1);
+              segStart = i;
+              continue;
+            }
+          }
+
+          if (BRACKET_PAIRS[ch]) {
+            bracketStack.push(BRACKET_PAIRS[ch]);
+            i++;
+            continue;
+          }
+
+          if (CLOSE_TO_OPEN[ch] && bracketStack.length > 0) {
+            if (bracketStack[bracketStack.length - 1] === ch) {
+              bracketStack.pop();
+            } else {
+              const idx = bracketStack.lastIndexOf(ch);
+              if (idx !== -1) bracketStack.splice(idx);
+            }
+            i++;
+            continue;
+          }
+
+          if (bracketStack.length === 0 && TERMINATOR_RE.test(ch)) {
+            // 連続する疑問符・感嘆符等を1つの文末区切りとしてまとめる
+            let termEnd = i + 1;
+            while (termEnd < end && TERMINATOR_RE.test(text[termEnd])) {
+              termEnd++;
+            }
+            // 直後に閉じ括弧のみ続く場合（例: 「〜だ。」）は文末に含め、比較時には除外する
+            while (termEnd < end && CLOSE_TO_OPEN[text[termEnd]] && bracketStack.length === 0) {
+              termEnd++;
+            }
+
+            const rawSentence = text.slice(segStart, termEnd);
+            const normalizedEnd = rawSentence.replace(TRAILING_STRIP_RE, '');
+
+            if (normalizedEnd.length > 0) {
+              onSentence({
+                start: segStart,
+                end: termEnd,
+                text: rawSentence.trim(),
+                normalizedEnd,
+                isDialogue: isDialogueCtx,
+              });
+            }
+
+            i = skipLeadingWs(termEnd);
+            segStart = i;
+            continue;
+          }
+
+          i++;
+        }
+      }
+
+      /**
+       * E01・E06 で共通利用する末尾一致連続区間の抽出ヘルパー
+       * @param {any[]} sentences
+       * @param {number} threshold
+       * @param {number} minLen
+       * @param {number} maxLen
+       * @returns {Array<{ startIdx: number, endIdx: number, matchText: string, matchLen: number }>}
+       */
+      findCommonSuffixRuns(sentences, threshold, minLen, maxLen) {
+        const candidates = [];
+        const safeMin = Math.max(1, minLen);
+        const safeMax = Math.max(safeMin, maxLen);
+
+        for (let len = safeMax; len >= safeMin; len--) {
+          let runStart = 0;
+          let prevSuffix = null;
+
+          const flush = (endIdx) => {
+            if (prevSuffix !== null && endIdx - runStart + 1 >= threshold) {
+              candidates.push({
+                startIdx: runStart,
+                endIdx,
+                matchText: prevSuffix,
+                matchLen: len,
+              });
+            }
+          };
+
+          for (let i = 0; i < sentences.length; i++) {
+            const endStr = sentences[i].normalizedEnd;
+            const suffix = endStr.length >= len ? endStr.slice(-len) : null;
+            if (suffix !== null && suffix === prevSuffix) {
+              continue;
+            }
+            flush(i - 1);
+            runStart = i;
+            prevSuffix = suffix;
+          }
+          flush(sentences.length - 1);
+        }
+
+        // 同一または包含される重複区間を整理し、最長一致 / 広い連続区間を1件にまとめる
+        if (candidates.length <= 1) return candidates;
+
+        // 連続文数が多い区間を優先し、同数なら一致文字数が長いものを優先する
+        candidates.sort((a, b) => {
+          const spanA = a.endIdx - a.startIdx;
+          const spanB = b.endIdx - b.startIdx;
+          if (spanB !== spanA) return spanB - spanA;
+          return b.matchLen - a.matchLen;
+        });
+
+        const selected = [];
+        for (const cand of candidates) {
+          const overlapsExisting = selected.some(
+            (ex) => cand.startIdx <= ex.endIdx && cand.endIdx >= ex.startIdx
+          );
+          if (!overlapsExisting) {
+            selected.push(cand);
+          }
+        }
+
+        return selected.sort((a, b) => a.startIdx - b.startIdx);
+      }
+
+      /**
+       * 述語関数（文 → キー文字列または null）により同一キーが threshold 回以上連続する区間を抽出する
+       */
+      _findKeyRuns(sentences, threshold, keyExtractor) {
+        const hits = [];
+        let runStart = 0;
+        let prevKey = null;
+
+        const flush = (endIdx) => {
+          if (prevKey !== null && endIdx - runStart + 1 >= threshold) {
+            hits.push({
+              startIdx: runStart,
+              endIdx,
+              key: prevKey,
+            });
+          }
+        };
+
+        for (let i = 0; i < sentences.length; i++) {
+          const key = keyExtractor(sentences[i]);
+          if (key !== null && key === prevKey) {
+            continue;
+          }
+          flush(i - 1);
+          runStart = i;
+          prevKey = key;
+        }
+        flush(sentences.length - 1);
+        return hits;
+      }
+
+      /**
+       * E01〜E07 の全ルールを実行し、同一連続区間の重複を統合した指摘配列を返す
+       * @param {import('../core/RuleContext.js').RuleContext} ctx
+       * @param {Record<string, any>} globalOpts
+       */
+      evaluateAll(ctx, globalOpts = {}) {
+        const allSettings = ctx.allSettings || {};
+        const runs = this.extractSentenceRuns(ctx, globalOpts);
+        if (runs.length === 0) return [];
+
+        const ruleConf = (id, defaults) => {
+          const st = allSettings[id];
+          return {
+            enabled: st ? Boolean(st.enabled) : defaults.enabled,
+            options: { ...defaults.options, ...(st?.options || {}) },
+          };
+        };
+
+        const e01 = ruleConf('ending.E01', {
+          enabled: true,
+          options: { threshold: 3, minLength: 3, maxLength: 6 },
+        });
+        const e02 = ruleConf('ending.E02', {
+          enabled: true,
+          options: { threshold: 3, expressions: DEFAULT_E02_EXPRESSIONS.join(', ') },
+        });
+        const e03 = ruleConf('ending.E03', { enabled: true, options: { threshold: 5 } });
+        const e04 = ruleConf('ending.E04', { enabled: false, options: { threshold: 5 } });
+        const e05 = ruleConf('ending.E05', { enabled: false, options: { threshold: 5 } });
+        const e06 = ruleConf('ending.E06', {
+          enabled: false,
+          options: { threshold: 3, compareLength: 4 },
+        });
+        const e07 = ruleConf('ending.E07', { enabled: true, options: { threshold: 4 } });
+
+        const e02List = String(e02.options.expressions || '')
+          .split(/[,、\n]+/)
+          .map((s) => s.trim())
+          .filter(Boolean)
+          .sort((a, b) => b.length - a.length);
+
+        const rawDetections = [];
+
+        for (const sentences of runs) {
+          if (sentences.length < 2) continue;
+
+          const pushHit = (ruleCode, ruleLabel, startIdx, endIdx, matchedPattern) => {
+            const slice = sentences.slice(startIdx, endIdx + 1);
+            const start = slice[0].start;
+            const end = slice[slice.length - 1].end;
+            rawDetections.push({
+              ruleCode,
+              ruleLabel,
+              start,
+              end,
+              count: slice.length,
+              matchedPattern,
+              sentences: slice.map((s) => s.text),
+            });
+          };
+
+          // E01: 完全に同じ文末文字列 (3〜6文字)
+          if (e01.enabled) {
+            const threshold = Math.max(2, Number(e01.options.threshold ?? 3));
+            const minLen = Math.max(3, Number(e01.options.minLength ?? 3));
+            const maxLen = Math.max(minLen, Number(e01.options.maxLength ?? 6));
+            const hits = this.findCommonSuffixRuns(sentences, threshold, minLen, maxLen);
+            for (const h of hits) {
+              pushHit(
+                'E01',
+                'E01: 同じ文末文字列の連続',
+                h.startIdx,
+                h.endIdx,
+                `「〜${h.matchText}」（${h.matchLen}文字一致）`
+              );
+            }
+          }
+
+          // E02: 特徴的な文末表現の連続
+          if (e02.enabled && e02List.length > 0) {
+            const threshold = Math.max(2, Number(e02.options.threshold ?? 3));
+            const hits = this._findKeyRuns(sentences, threshold, (s) => {
+              for (const expr of e02List) {
+                if (s.normalizedEnd.endsWith(expr)) return expr;
+              }
+              return null;
+            });
+            for (const h of hits) {
+              pushHit(
+                'E02',
+                'E02: 特徴的な文末表現の連続',
+                h.startIdx,
+                h.endIdx,
+                `「〜${h.key}」`
+              );
+            }
+          }
+
+          // E03: 「た」で終わる文の連続
+          if (e03.enabled) {
+            const threshold = Math.max(2, Number(e03.options.threshold ?? 5));
+            const hits = this._findKeyRuns(sentences, threshold, (s) =>
+              s.normalizedEnd.endsWith('た') ? 'た' : null
+            );
+            for (const h of hits) {
+              pushHit('E03', 'E03: 「た」で終わる文の連続', h.startIdx, h.endIdx, '最終文字「た」');
+            }
+          }
+
+          // E04: 非過去形を示唆する文末の連続
+          if (e04.enabled) {
+            const threshold = Math.max(2, Number(e04.options.threshold ?? 5));
+            const hits = this._findKeyRuns(sentences, threshold, (s) => {
+              const last = s.normalizedEnd.slice(-1);
+              return NON_PAST_CHARS.has(last) ? 'NON_PAST' : null;
+            });
+            for (const h of hits) {
+              pushHit(
+                'E04',
+                'E04: 非過去形を示唆する文末の連続',
+                h.startIdx,
+                h.endIdx,
+                '語尾「る/く/す/む/ぶ/ぬ/つ/う/ぐ」'
+              );
+            }
+          }
+
+          // E05: 文末の最終仮名1文字の一致（漢字・記号終わり除外）
+          if (e05.enabled) {
+            const threshold = Math.max(2, Number(e05.options.threshold ?? 5));
+            const hits = this._findKeyRuns(sentences, threshold, (s) => {
+              const last = s.normalizedEnd.slice(-1);
+              return KANA_END_RE.test(last) ? last : null;
+            });
+            for (const h of hits) {
+              pushHit(
+                'E05',
+                'E05: 文末の最終仮名の一致',
+                h.startIdx,
+                h.endIdx,
+                `最終仮名「${h.key}」`
+              );
+            }
+          }
+
+          // E06: 同一述語の連続（簡易判定・E01と共通の末尾一致ヘルパーを使用）
+          if (e06.enabled) {
+            const threshold = Math.max(2, Number(e06.options.threshold ?? 3));
+            const compareLen = Math.max(1, Number(e06.options.compareLength ?? 4));
+            const hits = this.findCommonSuffixRuns(sentences, threshold, compareLen, compareLen);
+            for (const h of hits) {
+              pushHit(
+                'E06',
+                'E06: 同一述語の連続（簡易判定）',
+                h.startIdx,
+                h.endIdx,
+                `「〜${h.matchText}」（末尾${compareLen}文字）`
+              );
+            }
+          }
+
+          // E07: 丁寧体の同一文末形式
+          if (e07.enabled) {
+            const threshold = Math.max(2, Number(e07.options.threshold ?? 4));
+            const hits = this._findKeyRuns(sentences, threshold, (s) => {
+              for (const form of POLITE_ENDING_FORMS) {
+                if (s.normalizedEnd.endsWith(form)) return form;
+              }
+              return null;
+            });
+            for (const h of hits) {
+              pushHit(
+                'E07',
+                'E07: 丁寧体の同一文末形式の連続',
+                h.startIdx,
+                h.endIdx,
+                `丁寧体「〜${h.key}」`
+              );
+            }
+          }
+        }
+
+        // 同一箇所 [start, end] に該当する複数ルールの警告を1件に統合する
+        const mergedMap = new Map();
+        for (const det of rawDetections) {
+          const spanKey = `${det.start}:${det.end}`;
+          if (!mergedMap.has(spanKey)) {
+            mergedMap.set(spanKey, {
+              start: det.start,
+              end: det.end,
+              count: det.count,
+              rules: [det.ruleLabel],
+              ruleCodes: [det.ruleCode],
+              patterns: [det.matchedPattern],
+              sentences: det.sentences,
+            });
+          } else {
+            const entry = mergedMap.get(spanKey);
+            if (!entry.ruleCodes.includes(det.ruleCode)) {
+              entry.ruleCodes.push(det.ruleCode);
+              entry.rules.push(det.ruleLabel);
+            }
+            if (!entry.patterns.includes(det.matchedPattern)) {
+              entry.patterns.push(det.matchedPattern);
+            }
+          }
+        }
+
+        return [...mergedMap.values()].map((entry) => {
+          const rulesSummary = entry.rules.join(' / ');
+          const patternsSummary = entry.patterns.join('・');
+          return ctx.createIssue({
+            start: entry.start,
+            end: entry.end,
+            severityOverride: 'warning',
+            ruleIdOverride: `ending.${entry.ruleCodes[0]}`,
+            ruleNameOverride: rulesSummary,
+            message: `[${rulesSummary}] ${entry.count}文連続（一致: ${patternsSummary}）。文末表現が連続しています。意図的な反復でないか確認してください。`,
+            suggestions: [],
+            extra: {
+              endingDetails: {
+                rules: entry.rules,
+                ruleCodes: entry.ruleCodes,
+                count: entry.count,
+                patterns: entry.patterns,
+                sentences: entry.sentences,
+              },
+            },
+          });
+        });
+      }
+    }
+
+    __exports.DEFAULT_E02_EXPRESSIONS = DEFAULT_E02_EXPRESSIONS;
+    __exports.POLITE_ENDING_FORMS = POLITE_ENDING_FORMS;
+    __exports.SentenceEndingService = SentenceEndingService;
+  });
+
   __define('src/rules/categories/patterns.js', function (__exports, __require) {
+    const { DEFAULT_E02_EXPRESSIONS, SentenceEndingService } = __require('src/services/SentenceEndingService.js');
     const { escapeRegExp, forEachMatch } = __require('src/utils/textUtils.js');
+
+    const sentenceEndingService = new SentenceEndingService();
 
     const DEFAULT_REPEATED_WORDS = [
       '彼は', '彼女は', '私は', '僕は', '俺は', 'それは', 'これは', 'あれは',
       'しかし', 'けれど', 'そして', 'だから', 'つまり',
     ];
-
-    const SENTENCE_ENDING_RE = /(だった|ていた|である|であった|ました|ません|でした|ない|だ|た|る)。$/;
 
     const CONJUNCTION_START_RE = /^(?:[　 ]*)(しかし|だが|けれど|けれども|そして|また|それで|だから|つまり|ところが|もっとも|なお|ちなみに)[、,\s　]/;
 
@@ -5405,59 +6068,139 @@
         },
       },
       {
-        id: 'pattern.sentence-ending-repeat',
-        name: '特定の文末表現の連続',
+        id: 'ending.config',
+        name: '文末表現の連続検出（全体設定・検査範囲）',
         category: 'patterns',
-        description: '「〜だった。」「〜ていた。」など同じ文末表現が設定回数以上連続した場合に通知します。',
+        description: '文末表現の連続検出機能（E01〜E07）全体の有効/無効、会話文の検査対象可否、段落境界リセットを設定します。',
         defaultSeverity: 'warning',
         defaultEnabled: true,
-        defaultOptions: { maxConsecutive: 3 },
+        defaultOptions: {
+          includeDialogue: false,
+          resetOnParagraphBreak: true,
+        },
         optionSchema: [
-          { key: 'maxConsecutive', label: '警告する連続文数', type: 'number', min: 2, max: 10 },
+          { key: 'includeDialogue', label: '「」などの会話文も検査対象に含める', type: 'boolean' },
+          { key: 'resetOnParagraphBreak', label: '空行・場面転換・章見出しで連続判定をリセットする', type: 'boolean' },
         ],
         check(ctx, opts) {
-          const threshold = Math.max(2, Number(opts.maxConsecutive ?? 3));
-          const issues = [];
-          let lastEnding = '';
-          let run = [];
-
-          const flushRun = () => {
-            if (run.length >= threshold) {
-              const lastItem = run[run.length - 1];
-              issues.push(
-                ctx.createIssue({
-                  start: lastItem.start,
-                  end: lastItem.end,
-                  message: `同じ文末表現「〜${lastEnding}。」が${run.length}文連続しています。単調さを避けるため語尾の変化を検討してください。`,
-                  suggestions: [],
-                })
-              );
-            }
-            run = [];
-          };
-
-          forEachMatch(ctx.text, /([^。\n「」『』]+。)/g, (m) => {
-            const s = m[1].trim();
-            const endMatch = SENTENCE_ENDING_RE.exec(s);
-            if (!endMatch) {
-              lastEnding = '';
-              flushRun();
-              return;
-            }
-            const ending = endMatch[1];
-            const endStart = m.index + m[0].length - (ending.length + 1);
-            const endEnd = m.index + m[0].length;
-
-            if (ending === lastEnding) {
-              run.push({ start: endStart, end: endEnd });
-            } else {
-              flushRun();
-              lastEnding = ending;
-              run = [{ start: endStart, end: endEnd }];
-            }
-          });
-          flushRun();
-          return issues;
+          return sentenceEndingService.evaluateAll(ctx, opts);
+        },
+      },
+      {
+        id: 'ending.E01',
+        name: 'E01: 同じ文末文字列の連続',
+        category: 'patterns',
+        description: '文末の最後の3〜6文字が完全に一致する文の連続を検出します（最長一致優先、1〜2文字一致は除外）。',
+        defaultSeverity: 'warning',
+        defaultEnabled: true,
+        defaultOptions: { threshold: 3, minLength: 3, maxLength: 6 },
+        optionSchema: [
+          { key: 'threshold', label: '連続文数の閾値', type: 'number', min: 2, max: 10 },
+          { key: 'minLength', label: '最小比較文字数', type: 'number', min: 3, max: 12 },
+          { key: 'maxLength', label: '最大比較文字数', type: 'number', min: 3, max: 12 },
+        ],
+        check() {
+          return [];
+        },
+      },
+      {
+        id: 'ending.E02',
+        name: 'E02: 特徴的な文末表現の連続',
+        category: 'patterns',
+        description: '「のだ」「だろう」「かもしれない」「と思った」など特徴的な文末表現が同一形式で連続した場合に警告します。',
+        defaultSeverity: 'warning',
+        defaultEnabled: true,
+        defaultOptions: {
+          threshold: 3,
+          expressions: DEFAULT_E02_EXPRESSIONS.join(', '),
+        },
+        optionSchema: [
+          { key: 'threshold', label: '連続文数の閾値', type: 'number', min: 2, max: 10 },
+          {
+            key: 'expressions',
+            label: '検出対象の文末表現（カンマ区切り）',
+            type: 'text',
+            placeholder: '例: のだ, のだった, だろう',
+          },
+        ],
+        check() {
+          return [];
+        },
+      },
+      {
+        id: 'ending.E03',
+        name: 'E03: 「た」で終わる文の連続',
+        category: 'patterns',
+        description: '最終文字が「た」（だった・ました・なかった等）である文の連続を検出します。',
+        defaultSeverity: 'warning',
+        defaultEnabled: true,
+        defaultOptions: { threshold: 5 },
+        optionSchema: [
+          { key: 'threshold', label: '連続文数の閾値', type: 'number', min: 2, max: 10 },
+        ],
+        check() {
+          return [];
+        },
+      },
+      {
+        id: 'ending.E04',
+        name: 'E04: 非過去形を示唆する文末の連続',
+        category: 'patterns',
+        description: '末尾が「る・く・す・む・ぶ・ぬ・つ・う・ぐ」のいずれかである文の連続を検出します。',
+        defaultSeverity: 'warning',
+        defaultEnabled: false,
+        defaultOptions: { threshold: 5 },
+        optionSchema: [
+          { key: 'threshold', label: '連続文数の閾値', type: 'number', min: 2, max: 10 },
+        ],
+        check() {
+          return [];
+        },
+      },
+      {
+        id: 'ending.E05',
+        name: 'E05: 文末の最終仮名の一致',
+        category: 'patterns',
+        description: '文末の最後の仮名1文字が一致する文の連続を検出します（漢字・記号終わりは対象外）。',
+        defaultSeverity: 'warning',
+        defaultEnabled: false,
+        defaultOptions: { threshold: 5 },
+        optionSchema: [
+          { key: 'threshold', label: '連続文数の閾値', type: 'number', min: 2, max: 10 },
+        ],
+        check() {
+          return [];
+        },
+      },
+      {
+        id: 'ending.E06',
+        name: 'E06: 同一述語の連続（簡易判定）',
+        category: 'patterns',
+        description: '設定された文字数の末尾文字列が連続する文で一致する場合に警告します（形態素解析なしの簡易判定）。',
+        defaultSeverity: 'warning',
+        defaultEnabled: false,
+        defaultOptions: { threshold: 3, compareLength: 4 },
+        optionSchema: [
+          { key: 'threshold', label: '連続文数の閾値', type: 'number', min: 2, max: 10 },
+          { key: 'compareLength', label: '比較する末尾文字数', type: 'number', min: 1, max: 12 },
+        ],
+        check() {
+          return [];
+        },
+      },
+      {
+        id: 'ending.E07',
+        name: 'E07: 丁寧体の同一文末形式の連続',
+        category: 'patterns',
+        description: '「です」「ます」「でした」「ました」「ません」「ませんでした」の同一形式が連続した場合に警告します。',
+        defaultSeverity: 'warning',
+        defaultEnabled: true,
+        defaultOptions: { threshold: 4 },
+        optionSchema: [
+          { key: 'threshold', label: '連続文数の閾値', type: 'number', min: 2, max: 10 },
+        ],
+        check() {
+          return [];
         },
       },
       {
@@ -7497,6 +8240,21 @@
             const sevLabel = issue.severity === 'error' ? '高確度' : '低確度';
             const sevClass = issue.severity === 'error' ? 'badge--error' : 'badge--warning';
 
+            const endingInfo = issue.extra?.endingDetails;
+            const endingDetailsHtml = endingInfo
+              ? `<div class="popover-ending-details">
+                  <div><strong>ルール:</strong> ${escapeHtml(endingInfo.rules.join(' / '))}</div>
+                  <div><strong>連続数:</strong> ${endingInfo.count}文連続（一致: ${escapeHtml(endingInfo.patterns.join('・'))}）</div>
+                  <ol class="popover-ending-sentences">
+                    ${endingInfo.sentences.map((s) => `<li>${escapeHtml(s)}</li>`).join('')}
+                  </ol>
+                </div>`
+              : '';
+
+            const matchedBoxHtml = endingInfo
+              ? endingDetailsHtml
+              : `<div class="popover-matched">対象: <code>${escapeHtml(issue.matchedText.replace(/\n/g, '↵'))}</code></div>`;
+
             const suggestionsHtml =
               issue.suggestions.length > 0
                 ? `<div class="popover-suggestions">
@@ -7507,7 +8265,11 @@
                       )
                       .join('')}
                   </div>`
-                : `<p class="popover-no-suggestion">自動修正候補はありません（文脈を確認して手動で編集してください）</p>`;
+                : `<p class="popover-no-suggestion">${
+                    endingInfo
+                      ? '推敲参考の警告です（自動修正・置換は行いません）。'
+                      : '自動修正候補はありません（文脈を確認して手動で編集してください）'
+                  }</p>`;
 
             const variantBtn = issue.extra?.variantGroupId
               ? `<button type="button" class="btn btn-xs btn-secondary" data-action="open-variants" data-group-id="${escapeHtml(issue.extra.variantGroupId)}">一括統一を開く</button>`
@@ -7546,7 +8308,7 @@
                   <span class="popover-pos">${issue.line}行 ${issue.column}列</span>
                 </div>
                 <p class="popover-message">${escapeHtml(issue.message)}</p>
-                <div class="popover-matched">対象: <code>${escapeHtml(issue.matchedText.replace(/\n/g, '↵'))}</code></div>
+                ${matchedBoxHtml}
                 ${mode === 'pinned' ? suggestionsHtml : this._renderHoverSuggestionHint(issue)}
                 ${batchTransformsHtml}
                 ${ignoreControls}

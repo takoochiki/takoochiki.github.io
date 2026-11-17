@@ -72,15 +72,46 @@ export class Store {
 
     const savedVariants = this.storage.loadVariantGroups();
     if (Array.isArray(savedVariants) && savedVariants.length > 0) {
-      // 「物 / もの」(var_mono) を除外し、拡充された標準辞書の新規グループを補完する
-      const filtered = savedVariants.filter((g) => g && g.id !== 'var_mono');
+      const removedIds = new Set([
+        'var_mono',
+        'var_naku',
+        'var_hayai',
+        'var_atatakai',
+        'var_soko',
+        'var_koko',
+      ]);
+      let migrated = false;
+      const filtered = savedVariants
+        .filter((g) => {
+          if (!g || removedIds.has(g.id)) {
+            migrated = true;
+            return false;
+          }
+          return true;
+        })
+        .map((g) => {
+          if (g.id === 'var_teshimau' && Array.isArray(g.terms) && g.terms.includes('ってしまう')) {
+            migrated = true;
+            return { ...g, label: 'て仕舞う / てしまう', terms: ['て仕舞う', 'てしまう'] };
+          }
+          if (
+            g.id === 'var_yappari' &&
+            Array.isArray(g.terms) &&
+            g.terms.includes('やっぱり') &&
+            g.terms.includes('やはり')
+          ) {
+            migrated = true;
+            return { ...g, label: '矢張り / やはり', terms: ['矢張り', 'やはり'] };
+          }
+          return g;
+        });
       const existingIds = new Set(filtered.map((g) => g.id));
       const added = DEFAULT_VARIANT_GROUPS.filter((g) => !existingIds.has(g.id)).map((g) => ({
         ...g,
         terms: [...g.terms],
       }));
       this.state.variantGroups = [...filtered, ...added];
-      if (filtered.length !== savedVariants.length || added.length > 0) {
+      if (migrated || added.length > 0) {
         this.storage.saveVariantGroups(this.state.variantGroups);
       }
     } else {

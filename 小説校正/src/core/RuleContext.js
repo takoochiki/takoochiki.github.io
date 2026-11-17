@@ -220,7 +220,16 @@ export class RuleContext {
    * ルールが指摘オブジェクトを生成するための標準ファクトリ
    * @param {object} params
    */
-  createIssue({ start, end, message, suggestions = [], severityOverride, extra }) {
+  createIssue({
+    start,
+    end,
+    message,
+    suggestions = [],
+    severityOverride,
+    ruleIdOverride,
+    ruleNameOverride,
+    extra,
+  }) {
     const safeStart = Math.max(0, Math.min(start, this.text.length));
     const safeEnd = Math.max(safeStart, Math.min(end, this.text.length));
     const { line, column } = this.getLineAndCol(safeStart);
@@ -233,6 +242,8 @@ export class RuleContext {
       matchedText: this.text.slice(safeStart, safeEnd),
       suggestions,
       severityOverride,
+      ruleIdOverride,
+      ruleNameOverride,
       extra,
     };
   }

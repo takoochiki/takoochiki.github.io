@@ -1,11 +1,15 @@
+import {
+  DEFAULT_E02_EXPRESSIONS,
+  SentenceEndingService,
+} from '../../services/SentenceEndingService.js';
 import { escapeRegExp, forEachMatch } from '../../utils/textUtils.js';
+
+const sentenceEndingService = new SentenceEndingService();
 
 const DEFAULT_REPEATED_WORDS = [
   '彼は', '彼女は', '私は', '僕は', '俺は', 'それは', 'これは', 'あれは',
   'しかし', 'けれど', 'そして', 'だから', 'つまり',
 ];
-
-const SENTENCE_ENDING_RE = /(だった|ていた|である|であった|ました|ません|でした|ない|だ|た|る)。$/;
 
 const CONJUNCTION_START_RE = /^(?:[　 ]*)(しかし|だが|けれど|けれども|そして|また|それで|だから|つまり|ところが|もっとも|なお|ちなみに)[、,\s　]/;
 
@@ -143,59 +147,139 @@ export const patternRules = [
     },
   },
   {
-    id: 'pattern.sentence-ending-repeat',
-    name: '特定の文末表現の連続',
+    id: 'ending.config',
+    name: '文末表現の連続検出（全体設定・検査範囲）',
     category: 'patterns',
-    description: '「〜だった。」「〜ていた。」など同じ文末表現が設定回数以上連続した場合に通知します。',
+    description: '文末表現の連続検出機能（E01〜E07）全体の有効/無効、会話文の検査対象可否、段落境界リセットを設定します。',
     defaultSeverity: 'warning',
     defaultEnabled: true,
-    defaultOptions: { maxConsecutive: 3 },
+    defaultOptions: {
+      includeDialogue: false,
+      resetOnParagraphBreak: true,
+    },
     optionSchema: [
-      { key: 'maxConsecutive', label: '警告する連続文数', type: 'number', min: 2, max: 10 },
+      { key: 'includeDialogue', label: '「」などの会話文も検査対象に含める', type: 'boolean' },
+      { key: 'resetOnParagraphBreak', label: '空行・場面転換・章見出しで連続判定をリセットする', type: 'boolean' },
     ],
     check(ctx, opts) {
-      const threshold = Math.max(2, Number(opts.maxConsecutive ?? 3));
-      const issues = [];
-      let lastEnding = '';
-      let run = [];
-
-      const flushRun = () => {
-        if (run.length >= threshold) {
-          const lastItem = run[run.length - 1];
-          issues.push(
-            ctx.createIssue({
-              start: lastItem.start,
-              end: lastItem.end,
-              message: `同じ文末表現「〜${lastEnding}。」が${run.length}文連続しています。単調さを避けるため語尾の変化を検討してください。`,
-              suggestions: [],
-            })
-          );
-        }
-        run = [];
-      };
-
-      forEachMatch(ctx.text, /([^。\n「」『』]+。)/g, (m) => {
-        const s = m[1].trim();
-        const endMatch = SENTENCE_ENDING_RE.exec(s);
-        if (!endMatch) {
-          lastEnding = '';
-          flushRun();
-          return;
-        }
-        const ending = endMatch[1];
-        const endStart = m.index + m[0].length - (ending.length + 1);
-        const endEnd = m.index + m[0].length;
-
-        if (ending === lastEnding) {
-          run.push({ start: endStart, end: endEnd });
-        } else {
-          flushRun();
-          lastEnding = ending;
-          run = [{ start: endStart, end: endEnd }];
-        }
-      });
-      flushRun();
-      return issues;
+      return sentenceEndingService.evaluateAll(ctx, opts);
+    },
+  },
+  {
+    id: 'ending.E01',
+    name: 'E01: 同じ文末文字列の連続',
+    category: 'patterns',
+    description: '文末の最後の3〜6文字が完全に一致する文の連続を検出します（最長一致優先、1〜2文字一致は除外）。',
+    defaultSeverity: 'warning',
+    defaultEnabled: true,
+    defaultOptions: { threshold: 3, minLength: 3, maxLength: 6 },
+    optionSchema: [
+      { key: 'threshold', label: '連続文数の閾値', type: 'number', min: 2, max: 10 },
+      { key: 'minLength', label: '最小比較文字数', type: 'number', min: 3, max: 12 },
+      { key: 'maxLength', label: '最大比較文字数', type: 'number', min: 3, max: 12 },
+    ],
+    check() {
+      return [];
+    },
+  },
+  {
+    id: 'ending.E02',
+    name: 'E02: 特徴的な文末表現の連続',
+    category: 'patterns',
+    description: '「のだ」「だろう」「かもしれない」「と思った」など特徴的な文末表現が同一形式で連続した場合に警告します。',
+    defaultSeverity: 'warning',
+    defaultEnabled: true,
+    defaultOptions: {
+      threshold: 3,
+      expressions: DEFAULT_E02_EXPRESSIONS.join(', '),
+    },
+    optionSchema: [
+      { key: 'threshold', label: '連続文数の閾値', type: 'number', min: 2, max: 10 },
+      {
+        key: 'expressions',
+        label: '検出対象の文末表現（カンマ区切り）',
+        type: 'text',
+        placeholder: '例: のだ, のだった, だろう',
+      },
+    ],
+    check() {
+      return [];
+    },
+  },
+  {
+    id: 'ending.E03',
+    name: 'E03: 「た」で終わる文の連続',
+    category: 'patterns',
+    description: '最終文字が「た」（だった・ました・なかった等）である文の連続を検出します。',
+    defaultSeverity: 'warning',
+    defaultEnabled: true,
+    defaultOptions: { threshold: 5 },
+    optionSchema: [
+      { key: 'threshold', label: '連続文数の閾値', type: 'number', min: 2, max: 10 },
+    ],
+    check() {
+      return [];
+    },
+  },
+  {
+    id: 'ending.E04',
+    name: 'E04: 非過去形を示唆する文末の連続',
+    category: 'patterns',
+    description: '末尾が「る・く・す・む・ぶ・ぬ・つ・う・ぐ」のいずれかである文の連続を検出します。',
+    defaultSeverity: 'warning',
+    defaultEnabled: false,
+    defaultOptions: { threshold: 5 },
+    optionSchema: [
+      { key: 'threshold', label: '連続文数の閾値', type: 'number', min: 2, max: 10 },
+    ],
+    check() {
+      return [];
+    },
+  },
+  {
+    id: 'ending.E05',
+    name: 'E05: 文末の最終仮名の一致',
+    category: 'patterns',
+    description: '文末の最後の仮名1文字が一致する文の連続を検出します（漢字・記号終わりは対象外）。',
+    defaultSeverity: 'warning',
+    defaultEnabled: false,
+    defaultOptions: { threshold: 5 },
+    optionSchema: [
+      { key: 'threshold', label: '連続文数の閾値', type: 'number', min: 2, max: 10 },
+    ],
+    check() {
+      return [];
+    },
+  },
+  {
+    id: 'ending.E06',
+    name: 'E06: 同一述語の連続（簡易判定）',
+    category: 'patterns',
+    description: '設定された文字数の末尾文字列が連続する文で一致する場合に警告します（形態素解析なしの簡易判定）。',
+    defaultSeverity: 'warning',
+    defaultEnabled: false,
+    defaultOptions: { threshold: 3, compareLength: 4 },
+    optionSchema: [
+      { key: 'threshold', label: '連続文数の閾値', type: 'number', min: 2, max: 10 },
+      { key: 'compareLength', label: '比較する末尾文字数', type: 'number', min: 1, max: 12 },
+    ],
+    check() {
+      return [];
+    },
+  },
+  {
+    id: 'ending.E07',
+    name: 'E07: 丁寧体の同一文末形式の連続',
+    category: 'patterns',
+    description: '「です」「ます」「でした」「ました」「ません」「ませんでした」の同一形式が連続した場合に警告します。',
+    defaultSeverity: 'warning',
+    defaultEnabled: true,
+    defaultOptions: { threshold: 4 },
+    optionSchema: [
+      { key: 'threshold', label: '連続文数の閾値', type: 'number', min: 2, max: 10 },
+    ],
+    check() {
+      return [];
     },
   },
   {

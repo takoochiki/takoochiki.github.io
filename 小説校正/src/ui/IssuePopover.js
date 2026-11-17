@@ -187,6 +187,21 @@ export class IssuePopover {
         const sevLabel = issue.severity === 'error' ? '高確度' : '低確度';
         const sevClass = issue.severity === 'error' ? 'badge--error' : 'badge--warning';
 
+        const endingInfo = issue.extra?.endingDetails;
+        const endingDetailsHtml = endingInfo
+          ? `<div class="popover-ending-details">
+              <div><strong>ルール:</strong> ${escapeHtml(endingInfo.rules.join(' / '))}</div>
+              <div><strong>連続数:</strong> ${endingInfo.count}文連続（一致: ${escapeHtml(endingInfo.patterns.join('・'))}）</div>
+              <ol class="popover-ending-sentences">
+                ${endingInfo.sentences.map((s) => `<li>${escapeHtml(s)}</li>`).join('')}
+              </ol>
+            </div>`
+          : '';
+
+        const matchedBoxHtml = endingInfo
+          ? endingDetailsHtml
+          : `<div class="popover-matched">対象: <code>${escapeHtml(issue.matchedText.replace(/\n/g, '↵'))}</code></div>`;
+
         const suggestionsHtml =
           issue.suggestions.length > 0
             ? `<div class="popover-suggestions">
@@ -197,7 +212,11 @@ export class IssuePopover {
                   )
                   .join('')}
               </div>`
-            : `<p class="popover-no-suggestion">自動修正候補はありません（文脈を確認して手動で編集してください）</p>`;
+            : `<p class="popover-no-suggestion">${
+                endingInfo
+                  ? '推敲参考の警告です（自動修正・置換は行いません）。'
+                  : '自動修正候補はありません（文脈を確認して手動で編集してください）'
+              }</p>`;
 
         const variantBtn = issue.extra?.variantGroupId
           ? `<button type="button" class="btn btn-xs btn-secondary" data-action="open-variants" data-group-id="${escapeHtml(issue.extra.variantGroupId)}">一括統一を開く</button>`
@@ -236,7 +255,7 @@ export class IssuePopover {
               <span class="popover-pos">${issue.line}行 ${issue.column}列</span>
             </div>
             <p class="popover-message">${escapeHtml(issue.message)}</p>
-            <div class="popover-matched">対象: <code>${escapeHtml(issue.matchedText.replace(/\n/g, '↵'))}</code></div>
+            ${matchedBoxHtml}
             ${mode === 'pinned' ? suggestionsHtml : this._renderHoverSuggestionHint(issue)}
             ${batchTransformsHtml}
             ${ignoreControls}

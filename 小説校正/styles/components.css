@@ -419,6 +419,25 @@ mark.snip-hit {
   font-family: var(--manuscript-font);
 }
 
+.popover-ending-details {
+  font-size: 12px;
+  background: var(--bg-muted);
+  padding: 6px 8px;
+  border-radius: 5px;
+  margin-bottom: 6px;
+}
+
+.popover-ending-sentences {
+  margin: 4px 0 0;
+  padding-left: 18px;
+  font-family: var(--manuscript-font);
+  font-size: 12px;
+}
+
+.popover-ending-sentences li {
+  margin-bottom: 2px;
+}
+
 .popover-suggestions {
   display: flex;
   flex-wrap: wrap;

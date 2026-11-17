@@ -298,3 +298,153 @@ Deno.test('段落の文字数上限: 500文字までは許可し、501文字以�
     1
   );
 });
+
+Deno.test('表記揺れ: ってしまう と てしまう の誤検出がないこと', () => {
+  const safeText = '　つい笑ってしまう。うっかり忘れてしまう。';
+  const { store: safeStore } = createTestStore(safeText);
+  assertEquals(
+    safeStore.state.issues.filter((i) => i.ruleId === 'variant.inconsistency').length,
+    0
+  );
+
+  // 本来の表記揺れ（「て仕舞う」と「てしまう」）は検出される
+  const conflictText = '　忘れて仕舞う。思い出してしまう。';
+  const { store: conflictStore } = createTestStore(conflictText);
+  assertEquals(
+    conflictStore.state.issues.filter((i) => i.ruleId === 'variant.inconsistency').length,
+    2
+  );
+});
+
+Deno.test('文末表現連続検出 E01〜E07 の全ルールと重複統合・設定変更', () => {
+  // E01: 最長一致優先（3文連続「静かだった」）＆すべて黄色・修正候補なし
+  const e01Text = '　山は静かだった。森も静かだった。湖も静かだった。';
+  const { store: s01 } = createTestStore(e01Text);
+  const e01Issues = s01.state.issues.filter((i) => i.ruleId.startsWith('ending.'));
+  assertEquals(e01Issues.length, 1);
+  assertEquals(e01Issues[0].ruleId, 'ending.E01');
+  assertEquals(e01Issues[0].severity, 'warning');
+  assertEquals(e01Issues[0].suggestions.length, 0);
+  assert(e01Issues[0].message.includes('静かだった'));
+
+  // 2文字以下の一致（「った」3文）は E01 対象外
+  const shortText = '　彼は走った。彼女は笑った。友人は怒った。';
+  const { store: sShort } = createTestStore(shortText);
+  assertEquals(
+    sShort.state.issues.filter((i) => i.ruleId.startsWith('ending.')).length,
+    0
+  );
+
+  // E02: 特徴的な文末表現（「はずだ」3文連続）＋カスタム表現追加
+  const e02Text = '　雨が降るはずだ。道も濡れるはずだ。傘が要るはずだ。';
+  const { store: s02 } = createTestStore(e02Text);
+  const e02Issues = s02.state.issues.filter((i) => i.ruleId.startsWith('ending.'));
+  assertEquals(e02Issues.length, 1);
+  assert(e02Issues[0].extra.endingDetails.ruleCodes.includes('E02'));
+
+  // E03 + E05 重複統合: 「た」5文連続（E05 を ON にすると 1 件に統合される）
+  const e03Text = '　朝が来た。鳥が鳴いた。風が吹いた。雲が流れた。犬が吠えた。';
+  const { store: s03 } = createTestStore(e03Text);
+  // 初期状態（E03 ON, E05 OFF）で1件
+  let tIssues = s03.state.issues.filter((i) => i.ruleId.startsWith('ending.'));
+  assertEquals(tIssues.length, 1);
+  assertEquals(tIssues[0].extra.endingDetails.count, 5);
+  assertEquals(tIssues[0].extra.endingDetails.ruleCodes, ['E03']);
+
+  // E05 を ON にしても同一連続区間は 1 件に統合され、E03 と E05 両方が含まれる
+  s03.updateRuleSetting('ending.E05', { enabled: true });
+  tIssues = s03.state.issues.filter((i) => i.ruleId.startsWith('ending.'));
+  assertEquals(tIssues.length, 1);
+  assert(tIssues[0].extra.endingDetails.ruleCodes.includes('E03'));
+  assert(tIssues[0].extra.endingDetails.ruleCodes.includes('E05'));
+
+  // E05 で漢字終わりの連続は対象外
+  const kanjiEndText = '　彼は東京。姉は京都。父は大阪。母は奈良。弟は沖縄。';
+  const { store: sKanji } = createTestStore(kanjiEndText);
+  sKanji.updateRuleSetting('ending.E05', { enabled: true });
+  assertEquals(
+    sKanji.state.issues.filter((i) => i.ruleId.startsWith('ending.')).length,
+    0
+  );
+
+  // E04: 非過去形（初期OFF → ON で5文検出）
+  const e04Text = '　風が吹く。木が揺れる。鳥が飛ぶ。川が流れる。水が光る。';
+  const { store: s04 } = createTestStore(e04Text);
+  assertEquals(
+    s04.state.issues.filter((i) => i.ruleId.startsWith('ending.')).length,
+    0
+  );
+  s04.updateRuleSetting('ending.E04', { enabled: true });
+  const e04Issues = s04.state.issues.filter((i) => i.ruleId.startsWith('ending.'));
+  assertEquals(e04Issues.length, 1);
+  assert(e04Issues[0].extra.endingDetails.ruleCodes.includes('E04'));
+
+  // E06: 同一述語簡易判定（初期OFF → ON で末尾2文字一致3文検出）
+  const e06Text = '　春を待つ。夢を持つ。光を放つ。';
+  const { store: s06 } = createTestStore(e06Text);
+  assertEquals(
+    s06.state.issues.filter((i) => i.ruleId.startsWith('ending.')).length,
+    0
+  );
+  s06.updateRuleSetting('ending.E06', { enabled: true, options: { threshold: 3, compareLength: 1 } });
+  const e06Issues = s06.state.issues.filter((i) => i.ruleId.startsWith('ending.'));
+  assertEquals(e06Issues.length, 1);
+  assert(e06Issues[0].extra.endingDetails.ruleCodes.includes('E06'));
+
+  // E07: 丁寧体同一形式 4文連続
+  const e07Text = '　雨が降ります。風が吹きます。雷が鳴ります。傘を差します。';
+  const { store: s07 } = createTestStore(e07Text);
+  const e07Issues = s07.state.issues.filter((i) => i.ruleId.startsWith('ending.'));
+  assertEquals(e07Issues.length, 1);
+  assert(e07Issues[0].extra.endingDetails.ruleCodes.includes('E07'));
+});
+
+Deno.test('文末表現連続検出: 会話文・空行・場面転換リセット、単一改行継続、括弧内句点保護', () => {
+  // 1. 会話文を挟むと連続判定がリセットされる（3文+会話+2文で5文にならない）
+  const dialogueResetText =
+    '　朝が来た。鳥が鳴いた。風が吹いた。\n「おはよう。」\n　雲が流れた。犬が吠えた。';
+  const { store: sDial } = createTestStore(dialogueResetText);
+  assertEquals(
+    sDial.state.issues.filter((i) => i.ruleId.startsWith('ending.')).length,
+    0
+  );
+
+  // 2. 空行・場面転換を挟むとリセットされる
+  const blankResetText = '　朝が来た。鳥が鳴いた。風が吹いた。\n\n　雲が流れた。犬が吠えた。';
+  const { store: sBlank } = createTestStore(blankResetText);
+  assertEquals(
+    sBlank.state.issues.filter((i) => i.ruleId.startsWith('ending.')).length,
+    0
+  );
+
+  // 3. 通常の単一改行ではリセットされない
+  const singleNewlineText =
+    '　朝が来た。\n鳥が鳴いた。\n風が吹いた。\n雲が流れた。\n犬が吠えた。';
+  const { store: sSingle } = createTestStore(singleNewlineText);
+  assertEquals(
+    sSingle.state.issues.filter((i) => i.ruleId.startsWith('ending.')).length,
+    1
+  );
+
+  // 4. 括弧内の句点を文末区切りとして誤認しない（内側の「行くよ。」で分割せず全体で1文）
+  const bracketQuoteText =
+    '　彼は「行くよ。」と言った。彼女も「賛成だ。」と笑った。';
+  const { store: sBracket } = createTestStore(bracketQuoteText);
+  assertEquals(
+    sBracket.state.issues.filter((i) => i.ruleId.startsWith('ending.')).length,
+    0
+  );
+
+  // 5. 会話文の検査を有効にすると会話文内の連続も検出する
+  const dialInnerText = '「雨が降った。風が吹いた。雷が鳴った。葉が舞った。靴が濡れた。」';
+  const { store: sDialOn } = createTestStore(dialInnerText);
+  assertEquals(
+    sDialOn.state.issues.filter((i) => i.ruleId.startsWith('ending.')).length,
+    0
+  );
+  sDialOn.updateRuleSetting('ending.config', { options: { includeDialogue: true } });
+  assertEquals(
+    sDialOn.state.issues.filter((i) => i.ruleId.startsWith('ending.')).length,
+    1
+  );
+});

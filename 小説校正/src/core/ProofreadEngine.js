@@ -99,11 +99,13 @@ export class ProofreadEngine {
       for (let i = 0; i < ruleIssues.length; i++) {
         const rawIssue = ruleIssues[i];
         if (!rawIssue) continue;
+        const resolvedRuleId = rawIssue.ruleIdOverride || rule.id;
+        const resolvedRuleName = rawIssue.ruleNameOverride || rule.name;
         const severity = rawIssue.severityOverride || setting.severity || rule.defaultSeverity;
         collected.push({
-          id: `${rule.id}@${rawIssue.start}-${rawIssue.end}#${i}`,
-          ruleId: rule.id,
-          ruleName: rule.name,
+          id: `${resolvedRuleId}@${rawIssue.start}-${rawIssue.end}#${i}`,
+          ruleId: resolvedRuleId,
+          ruleName: resolvedRuleName,
           category: rule.category,
           start: rawIssue.start,
           end: rawIssue.end,
