@@ -5,6 +5,32 @@ const PREFERRED_DASH_LABEL = {
   '—': '— (U+2014 EMダッシュ)',
 };
 
+const ELLIPSIS_CHAR_LABEL = {
+  '…': '三点リーダー「…」(U+2026)',
+  '⋯': '中線三点リーダー「⋯」(U+22EF)',
+};
+
+const DASH_CHAR_LABEL = {
+  '―': 'ホリゾンタルバー「―」(U+2015)',
+  '—': 'EMダッシュ「—」(U+2014)',
+  '─': '細罫線「─」(U+2500)',
+  '━': '太罫線「━」(U+2501)',
+};
+
+const PUNCT_CHAR_LABEL = {
+  '。': '全角句点「。」',
+  '、': '全角読点「、」',
+  '．': '全角ピリオド「．」',
+  '，': '全角カンマ「，」',
+  '.': '半角ピリオド「.」',
+  ',': '半角カンマ「,」',
+};
+
+const WAVE_DASH_LABEL = {
+  '〜': '波ダッシュ「〜」(U+301C)',
+  '～': '全角チルダ「～」(U+FF5E)',
+};
+
 /**
  * 1. 約物・記号カテゴリの校正ルール群
  */
@@ -87,7 +113,7 @@ export const punctuationRules = [
     id: 'punct.ellipsis-sub',
     name: '三点リーダーの代用表記',
     category: 'punctuation',
-    description: '「・・・」「･･･」「...」「。。。」など三点リーダーの代用表記を検出します。',
+    description: '「・・・」「･･･」「...」「．．」など三点リーダーの代用表記を検出します。',
     defaultSeverity: 'error',
     defaultEnabled: true,
     defaultOptions: { preferredChar: '…' },
@@ -106,13 +132,18 @@ export const punctuationRules = [
       const target = (opts.preferredChar || '…').repeat(2);
       const issues = [];
       forEachMatch(ctx.text, /(?:[・･]{3,}|\.{3,}|．{2,})/g, (m) => {
-        // URL内ピリオド連続はほぼないが念のため確認
         issues.push(
           ctx.createIssue({
             start: m.index,
             end: m.index + m[0].length,
             message: `三点リーダーの代用表記「${m[0]}」が使われています。`,
             suggestions: [{ label: `「${target}」に置換`, replacement: target }],
+            extra: {
+              batchTransforms: [
+                { id: 'to-std-ellipsis', label: '代用・異体字をすべて「…」(U+2026) に統一' },
+                { id: 'to-midline-ellipsis', label: '代用・異体字をすべて「⋯」(U+22EF) に統一' },
+              ],
+            },
           })
         );
       });
@@ -163,7 +194,7 @@ export const punctuationRules = [
     id: 'punct.ellipsis-mix',
     name: '三点リーダーの異体字混在',
     category: 'punctuation',
-    description: '標準の三点リーダー「…」(U+2026) と中線三点「⋯」(U+22EF) の混在を検出します。',
+    description: '標準の三点リーダー「…」(U+2026) と中線三点リーダー「⋯」(U+22EF) の混在を検出します。',
     defaultSeverity: 'warning',
     defaultEnabled: true,
     defaultOptions: { preferredChar: '…' },
@@ -192,10 +223,14 @@ export const punctuationRules = [
           ctx.createIssue({
             start: m.index,
             end: m.index + m[0].length,
-            message: hasBoth
-              ? `三点リーダーの異体字（… と ⋯）が混在しています。`
-              : `設定された標準文字「${preferred}」と異なる三点リーダー「${other}」が使われています。`,
+            message: `${ELLIPSIS_CHAR_LABEL[other]}が使われています（標準設定: ${ELLIPSIS_CHAR_LABEL[preferred]}）。`,
             suggestions: [{ label: `「${rep}」に統一`, replacement: rep }],
+            extra: {
+              batchTransforms: [
+                { id: 'to-std-ellipsis', label: 'すべて「…」(U+2026) に統一' },
+                { id: 'to-midline-ellipsis', label: 'すべて「⋯」(U+22EF) に統一' },
+              ],
+            },
           })
         );
       });
@@ -225,15 +260,26 @@ export const punctuationRules = [
       const preferred = opts.preferredChar || '―';
       const variants = ['―', '—', '─', '━'].filter((c) => c !== preferred);
       const re = new RegExp(`[${variants.join('')}]+`, 'g');
+      const dashSubEnabled = ctx.allSettings['punct.dash-sub']?.enabled !== false;
       const issues = [];
       forEachMatch(ctx.text, re, (m) => {
+        // 2文字以上の罫線（── 等）は dash-sub 有効時に重複指摘しない
+        if (dashSubEnabled && m[0].length >= 2 && /[─━]/.test(m[0])) return;
+        const ch = m[0][0];
         const rep = preferred.repeat(m[0].length);
+        const charLabel = DASH_CHAR_LABEL[ch] || `文字「${ch}」`;
         issues.push(
           ctx.createIssue({
             start: m.index,
             end: m.index + m[0].length,
-            message: `ダッシュ文字種「${m[0][0]}」が使用されています（標準設定: 「${preferred}」）。`,
+            message: `${charLabel}が使われています（標準設定: ${DASH_CHAR_LABEL[preferred]}）。`,
             suggestions: [{ label: `「${rep}」に統一`, replacement: rep }],
+            extra: {
+              batchTransforms: [
+                { id: 'to-horizontal-bar', label: 'ダッシュ類をすべて「―」(U+2015) に統一' },
+                { id: 'to-em-dash', label: 'ダッシュ類をすべて「—」(U+2014) に統一' },
+              ],
+            },
           })
         );
       });
@@ -297,7 +343,7 @@ export const punctuationRules = [
             ctx.createIssue({
               start: idx,
               end: idx + 1,
-              message: `句読点「${ch}」が標準形式（「${expected}」）と異なっています。`,
+              message: `${PUNCT_CHAR_LABEL[ch]}が使われています（標準設定: ${PUNCT_CHAR_LABEL[expected]}）。`,
               suggestions: [{ label: `「${expected}」に置換`, replacement: expected }],
             })
           );
@@ -349,6 +395,9 @@ export const punctuationRules = [
               ? `半角の疑問符・感嘆符「${m[0]}」が使用されています。`
               : `全角の疑問符・感嘆符「${m[0]}」が使用されています。`,
             suggestions: [{ label: `「${rep}」に置換`, replacement: rep }],
+            extra: full
+              ? { batchTransforms: [{ id: 'half-qe-to-full', label: '半角「?!」をすべて全角「？！」に変換' }] }
+              : undefined,
           })
         );
       });
@@ -357,16 +406,16 @@ export const punctuationRules = [
   },
   {
     id: 'punct.wave-dash-mix',
-    name: '波ダッシュの文字種混在',
+    name: '波ダッシュ・全角チルダの混在',
     category: 'punctuation',
-    description: '「〜」(U+301C) と全角チルダ「～」(U+FF5E) の混在を検出します。',
+    description: '波ダッシュ「〜」(U+301C) と全角チルダ「～」(U+FF5E) の混在を検出します。',
     defaultSeverity: 'warning',
     defaultEnabled: true,
     defaultOptions: { preferredChar: '〜' },
     optionSchema: [
       {
         key: 'preferredChar',
-        label: '統一する波ダッシュ文字',
+        label: '統一する文字',
         type: 'select',
         choices: [
           { value: '〜', label: '〜 (U+301C 波ダッシュ)' },
@@ -383,8 +432,14 @@ export const punctuationRules = [
           ctx.createIssue({
             start: m.index,
             end: m.index + 1,
-            message: `波ダッシュ「${other}」が使われています（標準設定: 「${preferred}」）。混在に注意してください。`,
+            message: `${WAVE_DASH_LABEL[other]}が使われています（標準設定: ${WAVE_DASH_LABEL[preferred]}）。混在に注意してください。`,
             suggestions: [{ label: `「${preferred}」に置換`, replacement: preferred }],
+            extra: {
+              batchTransforms: [
+                { id: 'to-fullwidth-tilde', label: '原稿内をすべて全角チルダ「～」(U+FF5E) に統一' },
+                { id: 'to-wave-dash', label: '原稿内をすべて波ダッシュ「〜」(U+301C) に統一' },
+              ],
+            },
           })
         );
       });
@@ -678,7 +733,7 @@ export const punctuationRules = [
     id: 'punct.unnatural-space',
     name: '約物の前後の不自然な空白',
     category: 'punctuation',
-    description: '中黒「・」や三点リーダー「…」、ダッシュ「―」の前後に不自然な空白が入っていないか検査します。',
+    description: '中黒「・」の前後に不自然な空白が入っていないか検査します。',
     defaultSeverity: 'warning',
     defaultEnabled: true,
     defaultOptions: {},

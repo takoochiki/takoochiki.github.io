@@ -537,7 +537,8 @@
     const CONTEXT_LEN = 12;
 
     /**
-     * 無視された指摘・無視されたルールを管理し、編集後も可能な限り無視状態を追跡する。
+     * 無視された指摘・無視されたルール・無視された表記揺れグループを管理し、
+     * 編集後も可能な限り無視状態を追跡する。
      */
     class IgnoreManager {
       constructor() {
@@ -545,11 +546,13 @@
         this.items = [];
         /** @type {Set<string>} */
         this.ignoredRuleIds = new Set();
+        /** @type {Set<string>} */
+        this.ignoredVariantGroupIds = new Set();
       }
 
       /**
        * 永続化データから復元する
-       * @param {{ items?: any[], ignoredRuleIds?: string[] } | null} data
+       * @param {{ items?: any[], ignoredRuleIds?: string[], ignoredVariantGroupIds?: string[] } | null} data
        */
       load(data) {
         if (!data || typeof data !== 'object') {
@@ -568,22 +571,27 @@
             }))
           : [];
         this.ignoredRuleIds = new Set(Array.isArray(data.ignoredRuleIds) ? data.ignoredRuleIds : []);
+        this.ignoredVariantGroupIds = new Set(
+          Array.isArray(data.ignoredVariantGroupIds) ? data.ignoredVariantGroupIds : []
+        );
       }
 
       /**
        * 永続化・プロジェクト保存用にシリアライズする
-       * @returns {{ items: any[], ignoredRuleIds: string[] }}
+       * @returns {{ items: any[], ignoredRuleIds: string[], ignoredVariantGroupIds: string[] }}
        */
       serialize() {
         return {
           items: this.items.map((item) => ({ ...item })),
           ignoredRuleIds: [...this.ignoredRuleIds],
+          ignoredVariantGroupIds: [...this.ignoredVariantGroupIds],
         };
       }
 
       clear() {
         this.items = [];
         this.ignoredRuleIds = new Set();
+        this.ignoredVariantGroupIds = new Set();
       }
 
       /**
@@ -630,6 +638,31 @@
        */
       unignoreRule(ruleId) {
         this.ignoredRuleIds.delete(ruleId);
+      }
+
+      /**
+       * 表記揺れグループ単位で無視する
+       * @param {string} groupId
+       */
+      ignoreVariantGroup(groupId) {
+        this.ignoredVariantGroupIds.add(groupId);
+      }
+
+      /**
+       * 表記揺れグループ単位の無視を解除する
+       * @param {string} groupId
+       */
+      unignoreVariantGroup(groupId) {
+        this.ignoredVariantGroupIds.delete(groupId);
+      }
+
+      /**
+       * 表記揺れグループが無視中か判定する
+       * @param {string} groupId
+       * @returns {boolean}
+       */
+      isVariantGroupIgnored(groupId) {
+        return this.ignoredVariantGroupIds.has(groupId);
       }
 
       /**
@@ -701,7 +734,10 @@
        */
       applyIgnoreFlags(issues, text) {
         return issues.map((issue) => {
-          if (this.ignoredRuleIds.has(issue.ruleId)) {
+          if (
+            this.ignoredRuleIds.has(issue.ruleId) ||
+            (issue.extra?.variantGroupId && this.ignoredVariantGroupIds.has(issue.extra.variantGroupId))
+          ) {
             return { ...issue, ignored: true };
           }
           const matched = this.findMatchingEntry(issue, text);
@@ -741,6 +777,7 @@
        * @param {any[]} [config.variantGroups] - 表記揺れ辞書
        * @param {Record<string, any>} [config.display] - 表示設定（縦書き/横書き等）
        * @param {Record<string, any>} [config.allSettings] - ルール設定全体
+       * @param {import('./IgnoreManager.js').IgnoreManager | null} [config.ignoreManager] - 無視状態マネージャー
        */
       constructor(text, config = {}) {
         this.text = normalizeLineEndings(text);
@@ -748,6 +785,7 @@
         this.variantGroups = Array.isArray(config.variantGroups) ? config.variantGroups : [];
         this.display = config.display || {};
         this.allSettings = config.allSettings || {};
+        this.ignoreManager = config.ignoreManager || null;
 
         this.lines = this._parseLines(this.text);
         this.paragraphs = this._parseParagraphs(this.lines);
@@ -1038,6 +1076,7 @@
           variantGroups,
           display,
           allSettings: ruleSettings,
+          ignoreManager: this.ignoreManager,
         });
 
         const collected = [];
@@ -1160,23 +1199,51 @@
 
   __define('src/config/defaultVariants.js', function (__exports, __require) {
     /**
-     * 校正ルール.md 第5章に基づくデフォルト表記揺れ辞書
-     * 各グループは比較対象となる表記群と、任意の推奨表記（未指定時は双方出現時に警告）を持つ。
+     * デフォルト表記揺れ辞書
+     * 各グループは比較対象となる表記群と、任意の推奨表記（未指定時は未無視の複数表記が出現した際に警告）を持つ。
+     * boundaryCheck: true の項目は単漢字・短漢字語の前後に別漢字が続く複合語（例: 「仕事」）を除外する。
      */
     const DEFAULT_VARIANT_GROUPS = [
-      { id: 'var_dekiru', label: '出来る / できる', terms: ['出来る', 'できる'], preferred: '', boundaryCheck: false },
-      { id: 'var_kudasai', label: '下さい / ください', terms: ['下さい', 'ください'], preferred: '', boundaryCheck: false },
+      // 形式名詞・代名詞・数詞
       { id: 'var_koto', label: '事 / こと', terms: ['事', 'こと'], preferred: '', boundaryCheck: true },
-      { id: 'var_mono', label: '物 / もの', terms: ['物', 'もの'], preferred: '', boundaryCheck: true },
       { id: 'var_toki', label: '時 / とき', terms: ['時', 'とき'], preferred: '', boundaryCheck: true },
       { id: 'var_tokoro', label: '所 / ところ', terms: ['所', 'ところ'], preferred: '', boundaryCheck: true },
       { id: 'var_watashi', label: '私 / わたし', terms: ['私', 'わたし'], preferred: '', boundaryCheck: true },
       { id: 'var_anata', label: '貴方 / あなた', terms: ['貴方', 'あなた'], preferred: '', boundaryCheck: false },
       { id: 'var_hitori', label: '一人 / ひとり', terms: ['一人', 'ひとり'], preferred: '', boundaryCheck: true },
+      { id: 'var_futari', label: '二人 / ふたり', terms: ['二人', 'ふたり'], preferred: '', boundaryCheck: true },
       { id: 'var_hitotsu', label: '一つ / ひとつ', terms: ['一つ', 'ひとつ'], preferred: '', boundaryCheck: true },
+      { id: 'var_futatsu', label: '二つ / ふたつ', terms: ['二つ', 'ふたつ'], preferred: '', boundaryCheck: true },
+      { id: 'var_mittsu', label: '三つ / みっつ', terms: ['三つ', 'みっつ'], preferred: '', boundaryCheck: true },
       { id: 'var_ikkagetsu', label: '一ヶ月 / 一か月 / 一箇月', terms: ['一ヶ月', '一か月', '一箇月'], preferred: '', boundaryCheck: false },
-      { id: 'var_computer', label: 'コンピュータ / コンピューター', terms: ['コンピュータ', 'コンピューター'], preferred: '', boundaryCheck: false },
-      { id: 'var_violin', label: 'ヴァイオリン / バイオリン', terms: ['ヴァイオリン', 'バイオリン'], preferred: '', boundaryCheck: false },
+      { id: 'var_kodomo', label: '子供 / 子ども / こども', terms: ['子供', '子ども', 'こども'], preferred: '', boundaryCheck: false },
+      { id: 'var_tomodachi', label: '友達 / 友だち', terms: ['友達', '友だち'], preferred: '', boundaryCheck: false },
+      { id: 'var_otona', label: '大人 / おとな', terms: ['大人', 'おとな'], preferred: '', boundaryCheck: true },
+
+      // 補助動詞・動詞表記
+      { id: 'var_dekiru', label: '出来る / できる', terms: ['出来る', 'できる'], preferred: '', boundaryCheck: false },
+      { id: 'var_kudasai', label: '下さい / ください', terms: ['下さい', 'ください'], preferred: '', boundaryCheck: false },
+      { id: 'var_wakaru', label: '分かる / わかる / 解る', terms: ['分かる', 'わかる', '解る'], preferred: '', boundaryCheck: false },
+      { id: 'var_omou', label: '思う / 想う', terms: ['思う', '想う'], preferred: '', boundaryCheck: true },
+      { id: 'var_yameru', label: '止める / やめる', terms: ['止める', 'やめる'], preferred: '', boundaryCheck: true },
+      { id: 'var_kakeru', label: '掛ける / かける', terms: ['掛ける', 'かける'], preferred: '', boundaryCheck: true },
+      { id: 'var_tsukeru', label: '付ける / つける', terms: ['付ける', 'つける'], preferred: '', boundaryCheck: true },
+      { id: 'var_miru', label: '見る / 観る / 視る', terms: ['見る', '観る', '視る'], preferred: '', boundaryCheck: true },
+      { id: 'var_kiku', label: '聞く / 聴く / 訊く', terms: ['聞く', '聴く', '訊く'], preferred: '', boundaryCheck: true },
+      { id: 'var_naku', label: '泣く / 鳴く', terms: ['泣く', '鳴く'], preferred: '', boundaryCheck: true },
+      { id: 'var_teiru', label: 'て居る / ている', terms: ['て居る', 'ている'], preferred: '', boundaryCheck: false },
+      { id: 'var_teita', label: 'て居た / ていた', terms: ['て居た', 'ていた'], preferred: '', boundaryCheck: false },
+      { id: 'var_tekuru', label: 'て来る / てくる', terms: ['て来る', 'てくる'], preferred: '', boundaryCheck: false },
+      { id: 'var_teiku', label: 'て行く / ていく', terms: ['て行く', 'ていく'], preferred: '', boundaryCheck: false },
+      { id: 'var_temiru', label: 'て見る / てみる', terms: ['て見る', 'てみる'], preferred: '', boundaryCheck: false },
+      { id: 'var_teoku', label: 'て置く / ておく', terms: ['て置く', 'ておく'], preferred: '', boundaryCheck: false },
+      { id: 'var_teshimau', label: 'て仕舞う / てしまう', terms: ['て仕舞う', 'ってしまう', 'てしまう'], preferred: '', boundaryCheck: false },
+      { id: 'var_tekureru', label: 'て呉れる / てくれる', terms: ['て呉れる', 'てくれる'], preferred: '', boundaryCheck: false },
+      { id: 'var_temorau', label: 'て貰う / てもらう', terms: ['て貰う', 'てもらう'], preferred: '', boundaryCheck: false },
+      { id: 'var_toiu', label: 'と言う / という', terms: ['と言う', 'という'], preferred: '', boundaryCheck: false },
+      { id: 'var_toitta', label: 'と言った / といった', terms: ['と言った', 'といった'], preferred: '', boundaryCheck: false },
+
+      // 副詞・連体詞・接続表現
       { id: 'var_iroiro', label: 'いろいろ / 色々', terms: ['いろいろ', '色々'], preferred: '', boundaryCheck: false },
       { id: 'var_samazama', label: '様々 / さまざま', terms: ['様々', 'さまざま'], preferred: '', boundaryCheck: false },
       { id: 'var_sudeni', label: '既に / すでに', terms: ['既に', 'すでに'], preferred: '', boundaryCheck: false },
@@ -1186,15 +1253,501 @@
       { id: 'var_hotondo', label: '殆ど / ほとんど', terms: ['殆ど', 'ほとんど'], preferred: '', boundaryCheck: false },
       { id: 'var_naze', label: '何故 / なぜ', terms: ['何故', 'なぜ'], preferred: '', boundaryCheck: false },
       { id: 'var_itsu', label: '何時 / いつ', terms: ['何時', 'いつ'], preferred: '', boundaryCheck: true },
+      { id: 'var_hontou', label: '本当 / ほんとう', terms: ['本当', 'ほんとう'], preferred: '', boundaryCheck: true },
+      { id: 'var_tashika', label: '確か / たしか', terms: ['確か', 'たしか'], preferred: '', boundaryCheck: true },
+      { id: 'var_tabun', label: '多分 / たぶん', terms: ['多分', 'たぶん'], preferred: '', boundaryCheck: true },
+      { id: 'var_kanarazu', label: '必ず / かならず', terms: ['必ず', 'かならず'], preferred: '', boundaryCheck: false },
+      { id: 'var_kitto', label: '屹度 / きっと', terms: ['屹度', 'きっと'], preferred: '', boundaryCheck: false },
+      { id: 'var_yappari', label: '矢張り / やはり / やっぱり', terms: ['矢張り', 'やはり', 'やっぱり'], preferred: '', boundaryCheck: false },
+      { id: 'var_chotto', label: '一寸 / ちょっと', terms: ['一寸', 'ちょっと'], preferred: '', boundaryCheck: true },
+      { id: 'var_moshikashite', label: '若しかして / もしかして', terms: ['若しかして', 'もしかして'], preferred: '', boundaryCheck: false },
+      { id: 'var_mattaku', label: '全く / まったく', terms: ['全く', 'まったく'], preferred: '', boundaryCheck: false },
+      { id: 'var_sugu', label: '直ぐ / すぐ', terms: ['直ぐ', 'すぐ'], preferred: '', boundaryCheck: false },
+      { id: 'var_choudo', label: '丁度 / ちょうど', terms: ['丁度', 'ちょうど'], preferred: '', boundaryCheck: false },
+      { id: 'var_youyaku', label: '漸く / ようやく', terms: ['漸く', 'ようやく'], preferred: '', boundaryCheck: false },
+      { id: 'var_tsuini', label: '遂に / ついに', terms: ['遂に', 'ついに'], preferred: '', boundaryCheck: false },
+      { id: 'var_tachimachi', label: '忽ち / たちまち', terms: ['忽ち', 'たちまち'], preferred: '', boundaryCheck: false },
+      { id: 'var_shibaraku', label: '暫く / しばらく', terms: ['暫く', 'しばらく'], preferred: '', boundaryCheck: false },
+      { id: 'var_sorekara', label: '其れから / それから', terms: ['其れから', 'それから'], preferred: '', boundaryCheck: false },
+      { id: 'var_soredemo', label: '其れでも / それでも', terms: ['其れでも', 'それでも'], preferred: '', boundaryCheck: false },
+      { id: 'var_soko', label: '其処 / そこ', terms: ['其処', 'そこ'], preferred: '', boundaryCheck: false },
+      { id: 'var_koko', label: '此処 / ここ', terms: ['此処', 'ここ'], preferred: '', boundaryCheck: false },
+      { id: 'var_doko', label: '何処 / どこ', terms: ['何処', 'どこ'], preferred: '', boundaryCheck: false },
+      { id: 'var_doushite', label: '如何して / どうして', terms: ['如何して', 'どうして'], preferred: '', boundaryCheck: false },
+      { id: 'var_imamade', label: '今迄 / 今まで', terms: ['今迄', '今まで'], preferred: '', boundaryCheck: false },
+
+      // 挨拶・形容表現・外来語・漢字/仮名揺れ
+      { id: 'var_arigatou', label: '有難う / ありがとう', terms: ['有難う', 'ありがとう'], preferred: '', boundaryCheck: false },
+      { id: 'var_sumimasen', label: '済みません / すみません', terms: ['済みません', 'すみません'], preferred: '', boundaryCheck: false },
+      { id: 'var_gomen', label: '御免 / ごめん', terms: ['御免', 'ごめん'], preferred: '', boundaryCheck: false },
+      { id: 'var_kirei', label: '綺麗 / きれい', terms: ['綺麗', 'きれい'], preferred: '', boundaryCheck: false },
+      { id: 'var_kawaii', label: '可愛い / かわいい', terms: ['可愛い', 'かわいい'], preferred: '', boundaryCheck: false },
+      { id: 'var_omoshiroi', label: '面白い / おもしろい', terms: ['面白い', 'おもしろい'], preferred: '', boundaryCheck: false },
+      { id: 'var_tanoshii', label: '楽しい / たのしい', terms: ['楽しい', 'たのしい'], preferred: '', boundaryCheck: false },
+      { id: 'var_sabishii', label: '寂しい / 淋しい', terms: ['寂しい', '淋しい'], preferred: '', boundaryCheck: false },
+      { id: 'var_atatakai', label: '暖かい / 温かい', terms: ['暖かい', '温かい'], preferred: '', boundaryCheck: false },
+      { id: 'var_hayai', label: '早い / 速い', terms: ['早い', '速い'], preferred: '', boundaryCheck: false },
+      { id: 'var_nagai', label: '長い / 永い', terms: ['長い', '永い'], preferred: '', boundaryCheck: false },
+      { id: 'var_computer', label: 'コンピュータ / コンピューター', terms: ['コンピュータ', 'コンピューター'], preferred: '', boundaryCheck: false },
+      { id: 'var_violin', label: 'ヴァイオリン / バイオリン', terms: ['ヴァイオリン', 'バイオリン'], preferred: '', boundaryCheck: false },
+      { id: 'var_coffee', label: 'コーヒー / 珈琲', terms: ['コーヒー', '珈琲'], preferred: '', boundaryCheck: false },
+      { id: 'var_tobacco', label: 'タバコ / 煙草 / たばこ', terms: ['タバコ', '煙草', 'たばこ'], preferred: '', boundaryCheck: false },
+      { id: 'var_megane', label: 'メガネ / 眼鏡 / めがね', terms: ['メガネ', '眼鏡', 'めがね'], preferred: '', boundaryCheck: false },
+      { id: 'var_kaban', label: 'カバン / 鞄 / かばん', terms: ['カバン', '鞄', 'かばん'], preferred: '', boundaryCheck: false },
+      { id: 'var_glass', label: 'ガラス / 硝子', terms: ['ガラス', '硝子'], preferred: '', boundaryCheck: true },
     ];
 
     __exports.DEFAULT_VARIANT_GROUPS = DEFAULT_VARIANT_GROUPS;
+  });
+
+  __define('src/services/VariantService.js', function (__exports, __require) {
+    const { createId, escapeRegExp, extractContextSnippet, forEachMatch, halfKanaToFullKana } = __require('src/utils/textUtils.js');
+
+    const KANJI_CHAR_RE = /[\u4E00-\u9FFF々ヶ〆〇]/;
+    const ASCII_WORD_RE = /[A-Za-z0-9]/;
+    const URL_SKIP_RE = /https?:\/\/[^\s　」』）)]+|[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g;
+
+    /**
+     * URL / メール範囲を保護しつつテキスト変換を適用するヘルパー
+     * @param {string} text
+     * @param {(segment: string) => string} fn
+     * @returns {string}
+     */
+    function transformOutsideUrls(text, fn) {
+      let out = '';
+      let lastIdx = 0;
+      forEachMatch(text, URL_SKIP_RE, (m) => {
+        if (m.index > lastIdx) {
+          out += fn(text.slice(lastIdx, m.index));
+        }
+        out += m[0];
+        lastIdx = m.index + m[0].length;
+      });
+      if (lastIdx < text.length) {
+        out += fn(text.slice(lastIdx));
+      }
+      return out;
+    }
+
+    /**
+     * 原稿全体の記号・文字種を一括統一する変換カタログ（Undo 1回で復元可能）
+     */
+    const SYMBOL_TRANSFORMS = [
+      {
+        id: 'to-fullwidth-tilde',
+        label: 'すべて全角チルダ「～」(U+FF5E) に統一',
+        description: '原稿内の波ダッシュ「〜」(U+301C) を全角チルダ「～」(U+FF5E) に置換し、標準設定も全角チルダへ変更します。',
+        ruleSettingPatch: { ruleId: 'punct.wave-dash-mix', options: { preferredChar: '～' } },
+        countMatches(text) {
+          return (text.match(/〜/g) || []).length;
+        },
+        apply(text) {
+          return text.replace(/〜/g, '～');
+        },
+      },
+      {
+        id: 'to-wave-dash',
+        label: 'すべて波ダッシュ「〜」(U+301C) に統一',
+        description: '原稿内の全角チルダ「～」(U+FF5E) を波ダッシュ「〜」(U+301C) に置換し、標準設定も波ダッシュへ変更します。',
+        ruleSettingPatch: { ruleId: 'punct.wave-dash-mix', options: { preferredChar: '〜' } },
+        countMatches(text) {
+          return (text.match(/～/g) || []).length;
+        },
+        apply(text) {
+          return text.replace(/～/g, '〜');
+        },
+      },
+      {
+        id: 'to-horizontal-bar',
+        label: 'ダッシュ類をすべて「―」(U+2015) に統一',
+        description: 'EMダッシュ「—」や罫線代用「──」、長音連続「ーー」、ハイフン連続「--」を「―」に統一し、標準設定も「―」にします。',
+        ruleSettingPatch: { ruleId: 'punct.dash-mix', options: { preferredChar: '―' } },
+        countMatches(text) {
+          const m1 = (text.match(/[—─━]/g) || []).length;
+          const m2 = (text.match(/(?:ー{2,}|-{2,})/g) || []).length;
+          return m1 + m2;
+        },
+        apply(text) {
+          return text
+            .replace(/[—─━]/g, '―')
+            .replace(/ー{2,}/g, '――')
+            .replace(/<!--[\s\S]*?-->|--+/g, (m) => (m.startsWith('<!') ? m : '――'));
+        },
+      },
+      {
+        id: 'to-em-dash',
+        label: 'ダッシュ類をすべて「—」(U+2014) に統一',
+        description: 'ホリゾンタルバー「―」や代用表記を「—」(U+2014) に統一し、標準設定も「—」にします。',
+        ruleSettingPatch: { ruleId: 'punct.dash-mix', options: { preferredChar: '—' } },
+        countMatches(text) {
+          const m1 = (text.match(/[―─━]/g) || []).length;
+          const m2 = (text.match(/(?:ー{2,}|-{2,})/g) || []).length;
+          return m1 + m2;
+        },
+        apply(text) {
+          return text
+            .replace(/[―─━]/g, '—')
+            .replace(/ー{2,}/g, '——')
+            .replace(/<!--[\s\S]*?-->|--+/g, (m) => (m.startsWith('<!') ? m : '——'));
+        },
+      },
+      {
+        id: 'to-std-ellipsis',
+        label: '三点リーダーをすべて「…」(U+2026) に統一',
+        description: '中線三点リーダー「⋯」および代用表記（・・・、... 等）を標準「…」へ統一します。',
+        ruleSettingPatch: { ruleId: 'punct.ellipsis-mix', options: { preferredChar: '…' } },
+        countMatches(text) {
+          const m1 = (text.match(/⋯/g) || []).length;
+          const m2 = (text.match(/(?:[・･]{3,}|\.{3,}|．{2,})/g) || []).length;
+          return m1 + m2;
+        },
+        apply(text) {
+          return text
+            .replace(/⋯/g, '…')
+            .replace(/(?:[・･]{3,}|\.{3,}|．{2,})/g, '……');
+        },
+      },
+      {
+        id: 'to-midline-ellipsis',
+        label: '三点リーダーをすべて「⋯」(U+22EF) に統一',
+        description: '標準三点リーダー「…」および代用表記を「⋯」(U+22EF) へ統一します。',
+        ruleSettingPatch: { ruleId: 'punct.ellipsis-mix', options: { preferredChar: '⋯' } },
+        countMatches(text) {
+          const m1 = (text.match(/…/g) || []).length;
+          const m2 = (text.match(/(?:[・･]{3,}|\.{3,}|．{2,})/g) || []).length;
+          return m1 + m2;
+        },
+        apply(text) {
+          return text
+            .replace(/…/g, '⋯')
+            .replace(/(?:[・･]{3,}|\.{3,}|．{2,})/g, '⋯⋯');
+        },
+      },
+      {
+        id: 'fix-odd-ellipsis-dash',
+        label: '奇数個の三点リーダー・ダッシュをすべて偶数個に揃える',
+        description: '1個や3個などの奇数連続になっている「…」「⋯」「―」「—」に1文字補って偶数個にします。',
+        ruleSettingPatch: null,
+        countMatches(text) {
+          const e = (text.match(/[…⋯]+/g) || []).filter((s) => s.length % 2 !== 0).length;
+          const d = (text.match(/[―—]+/g) || []).filter((s) => s.length % 2 !== 0).length;
+          return e + d;
+        },
+        apply(text) {
+          return text
+            .replace(/[…⋯]+/g, (m) => (m.length % 2 !== 0 ? m + m[0] : m))
+            .replace(/[―—]+/g, (m) => (m.length % 2 !== 0 ? m + m[0] : m));
+        },
+      },
+      {
+        id: 'half-kana-to-full',
+        label: '半角カタカナをすべて全角カタカナに変換',
+        description: '原稿内の半角カタカナ（濁点・半濁点含む）をすべて全角カタカナに変換します。',
+        ruleSettingPatch: null,
+        countMatches(text) {
+          return (text.match(/[\uFF66-\uFF9F]+/g) || []).length;
+        },
+        apply(text) {
+          return text.replace(/[\uFF66-\uFF9F]+/g, (m) => halfKanaToFullKana(m));
+        },
+      },
+      {
+        id: 'half-qe-to-full',
+        label: '半角「?」「!」をすべて全角「？」「！」に変換',
+        description: 'URL内を除き、半角の疑問符・感嘆符をすべて全角に変換します。',
+        ruleSettingPatch: null,
+        countMatches(text) {
+          let count = 0;
+          transformOutsideUrls(text, (seg) => {
+            count += (seg.match(/[?!]/g) || []).length;
+            return seg;
+          });
+          return count;
+        },
+        apply(text) {
+          return transformOutsideUrls(text, (seg) =>
+            seg.replace(/\?/g, '？').replace(/!/g, '！')
+          );
+        },
+      },
+      {
+        id: 'half-paren-to-full',
+        label: '半角丸括弧「()」をすべて全角「（）」に変換',
+        description: 'URL内を除き、半角の丸括弧をすべて全角に変換します。',
+        ruleSettingPatch: null,
+        countMatches(text) {
+          let count = 0;
+          transformOutsideUrls(text, (seg) => {
+            count += (seg.match(/[()]/g) || []).length;
+            return seg;
+          });
+          return count;
+        },
+        apply(text) {
+          return transformOutsideUrls(text, (seg) =>
+            seg.replace(/\(/g, '（').replace(/\)/g, '）')
+          );
+        },
+      },
+    ];
+
+    /**
+     * ID からシンボル変換定義を取得する
+     * @param {string} id
+     */
+    function getSymbolTransform(id) {
+      return SYMBOL_TRANSFORMS.find((t) => t.id === id) || null;
+    }
+
+    /**
+     * 表記揺れ辞書の集計・出現箇所抽出・個別除外付き一括置換・プレビューを担当する
+     */
+    class VariantService {
+      /**
+       * 境界判定を行い、複合語中の誤検出を抑止するかどうかを判定する
+       * @param {string} text
+       * @param {number} start
+       * @param {number} end
+       * @param {string} term
+       * @param {boolean} boundaryCheck
+       * @returns {boolean}
+       */
+      isValidMatch(text, start, end, term, boundaryCheck) {
+        const prev = start > 0 ? text[start - 1] : '';
+        const next = end < text.length ? text[end] : '';
+
+        // 英数字用語は前後に英数字が連続する部分一致を除外
+        if (/^[A-Za-z0-9_.\-]+$/.test(term)) {
+          if ((prev && ASCII_WORD_RE.test(prev)) || (next && ASCII_WORD_RE.test(next))) {
+            return false;
+          }
+        }
+
+        if (boundaryCheck) {
+          // 単漢字語（事・時・所・私など）や短い漢字語の前後に漢字がくっついている熟語を除外
+          if (KANJI_CHAR_RE.test(term[0]) && prev && KANJI_CHAR_RE.test(prev)) {
+            return false;
+          }
+          if (KANJI_CHAR_RE.test(term[term.length - 1]) && next && KANJI_CHAR_RE.test(next)) {
+            return false;
+          }
+        }
+
+        return true;
+      }
+
+      /**
+       * 行番号計算用テーブルを構築
+       * @param {string} text
+       */
+      _buildLineStarts(text) {
+        const starts = [0];
+        for (let i = 0; i < text.length; i++) {
+          if (text[i] === '\n') {
+            starts.push(i + 1);
+          }
+        }
+        return starts;
+      }
+
+      _getLineNumber(lineStarts, offset) {
+        let lo = 0;
+        let hi = lineStarts.length - 1;
+        while (lo <= hi) {
+          const mid = (lo + hi) >> 1;
+          if (lineStarts[mid] <= offset) {
+            if (mid + 1 >= lineStarts.length || lineStarts[mid + 1] > offset) {
+              return mid + 1;
+            }
+            lo = mid + 1;
+          } else {
+            hi = mid - 1;
+          }
+        }
+        return 1;
+      }
+
+      /**
+       * 原稿内の全表記揺れグループの出現状況を集計する。
+       * ignoreManager が渡された場合、無視済み箇所を除いた有効表記のみで揺れ競合を判定する。
+       * @param {string} text
+       * @param {any[]} variantGroups
+       * @param {import('../core/IgnoreManager.js').IgnoreManager | null} [ignoreManager]
+       */
+      analyzeAllGroups(text, variantGroups, ignoreManager = null) {
+        const lineStarts = this._buildLineStarts(text);
+
+        return variantGroups.map((group) => {
+          const terms = (group.terms || []).filter(Boolean);
+          const termStats = {};
+          const activeTermStats = {};
+          const ignoredTermStats = {};
+          for (const term of terms) {
+            termStats[term] = 0;
+            activeTermStats[term] = 0;
+            ignoredTermStats[term] = 0;
+          }
+          const occurrences = [];
+          const groupIgnored = ignoreManager
+            ? ignoreManager.isVariantGroupIgnored(group.id)
+            : false;
+
+          if (terms.length > 0) {
+            // 長い語を優先してマッチさせ、同一箇所への重複マッチを防ぐ
+            const sortedTerms = [...terms].sort((a, b) => b.length - a.length);
+            const pattern = new RegExp(sortedTerms.map(escapeRegExp).join('|'), 'g');
+
+            forEachMatch(text, pattern, (m) => {
+              const term = m[0];
+              const start = m.index;
+              const end = start + term.length;
+              if (!this.isValidMatch(text, start, end, term, Boolean(group.boundaryCheck))) {
+                return;
+              }
+
+              const isOccIgnored =
+                groupIgnored ||
+                (ignoreManager
+                  ? Boolean(
+                      ignoreManager.findMatchingEntry(
+                        { ruleId: 'variant.inconsistency', start, end, matchedText: term },
+                        text
+                      )
+                    )
+                  : false);
+
+              termStats[term] = (termStats[term] || 0) + 1;
+              if (isOccIgnored) {
+                ignoredTermStats[term] = (ignoredTermStats[term] || 0) + 1;
+              } else {
+                activeTermStats[term] = (activeTermStats[term] || 0) + 1;
+              }
+
+              occurrences.push({
+                id: `${group.id}_${start}_${end}`,
+                term,
+                start,
+                end,
+                line: this._getLineNumber(lineStarts, start),
+                ignored: isOccIgnored,
+                snippet: extractContextSnippet(text, start, end, 18),
+              });
+            });
+          }
+
+          const allPresentTerms = Object.entries(termStats)
+            .filter(([, count]) => count > 0)
+            .map(([term]) => term);
+          const activeTerms = Object.entries(activeTermStats)
+            .filter(([, count]) => count > 0)
+            .map(([term]) => term);
+
+          const totalCount = occurrences.length;
+          const activeCount = occurrences.filter((o) => !o.ignored).length;
+          const ignoredCount = totalCount - activeCount;
+
+          const hasConflict =
+            !groupIgnored &&
+            (activeTerms.length > 1 ||
+              (Boolean(group.preferred) &&
+                activeTerms.some((t) => t !== group.preferred)));
+
+          const hasRawConflict =
+            allPresentTerms.length > 1 ||
+            (Boolean(group.preferred) &&
+              allPresentTerms.some((t) => t !== group.preferred));
+
+          return {
+            group,
+            termStats,
+            activeTermStats,
+            ignoredTermStats,
+            allPresentTerms,
+            activeTerms,
+            totalCount,
+            activeCount,
+            ignoredCount,
+            groupIgnored,
+            hasConflict,
+            hasRawConflict,
+            occurrences,
+          };
+        });
+      }
+
+      /**
+       * 指定グループに対して統一先表記を適用した場合の置換対象一覧とプレビューを生成する
+       * @param {string} text
+       * @param {object} groupAnalysis
+       * @param {string} targetTerm
+       * @param {Set<string>} excludedOccurrenceIds
+       */
+      buildBatchPreview(text, groupAnalysis, targetTerm, excludedOccurrenceIds = new Set()) {
+        const targets = groupAnalysis.occurrences.filter((occ) => occ.term !== targetTerm);
+        const activeReplacements = targets.filter((occ) => !excludedOccurrenceIds.has(occ.id));
+
+        // プレビュー用テキスト生成（後ろから置換）
+        let previewText = text;
+        const sortedDesc = [...activeReplacements].sort((a, b) => b.start - a.start);
+        for (const occ of sortedDesc) {
+          previewText =
+            previewText.slice(0, occ.start) + targetTerm + previewText.slice(occ.end);
+        }
+
+        // 変更行の差分プレビュー配列を生成
+        const beforeLines = text.split('\n');
+        const afterLines = previewText.split('\n');
+        const changedLineNumbers = [...new Set(activeReplacements.map((o) => o.line))].sort((a, b) => a - b);
+        const lineDiffs = changedLineNumbers.map((ln) => ({
+          line: ln,
+          before: beforeLines[ln - 1] ?? '',
+          after: afterLines[ln - 1] ?? '',
+        }));
+
+        return {
+          targets,
+          activeCount: activeReplacements.length,
+          excludedCount: targets.length - activeReplacements.length,
+          previewText,
+          lineDiffs,
+        };
+      }
+
+      /**
+       * 新規表記揺れグループ定義を作成する
+       * @param {string} termsCsv
+       * @param {string} preferred
+       * @param {boolean} boundaryCheck
+       */
+      createGroup(termsCsv, preferred = '', boundaryCheck = false) {
+        const terms = termsCsv
+          .split(/[,、\/／\s]+/)
+          .map((s) => s.trim())
+          .filter(Boolean);
+        const uniqueTerms = [...new Set(terms)];
+        if (uniqueTerms.length < 2) {
+          throw new Error('表記揺れグループには2つ以上の異なる表記を指定してください。');
+        }
+        return {
+          id: createId('var'),
+          label: uniqueTerms.join(' / '),
+          terms: uniqueTerms,
+          preferred: uniqueTerms.includes(preferred) ? preferred : '',
+          boundaryCheck: Boolean(boundaryCheck),
+        };
+      }
+    }
+
+    __exports.SYMBOL_TRANSFORMS = SYMBOL_TRANSFORMS;
+    __exports.getSymbolTransform = getSymbolTransform;
+    __exports.VariantService = VariantService;
   });
 
   __define('src/core/Store.js', function (__exports, __require) {
     const { DEFAULT_DISPLAY_SETTINGS, DEFAULT_LATEX_OPTIONS } = __require('src/config/constants.js');
     const { DEFAULT_VARIANT_GROUPS } = __require('src/config/defaultVariants.js');
     const { SAMPLE_MANUSCRIPT } = __require('src/config/sampleText.js');
+    const { getSymbolTransform } = __require('src/services/VariantService.js');
     const { createId, normalizeLineEndings } = __require('src/utils/textUtils.js');
 
     /**
@@ -1248,6 +1801,11 @@
       init() {
         const savedRuleSettings = this.storage.loadRuleSettings();
         this.state.ruleSettings = this.registry.mergeSettings(savedRuleSettings || {});
+        // 旧初期値(250文字)を保持していた環境は新初期値(500文字)へ移行する
+        if (this.state.ruleSettings['para.max-length']?.options?.maxChars === 250) {
+          this.state.ruleSettings['para.max-length'].options.maxChars = 500;
+          this.storage.saveRuleSettings(this.state.ruleSettings);
+        }
 
         const savedDisplay = this.storage.loadDisplaySettings();
         this.state.displaySettings = {
@@ -1256,10 +1814,21 @@
         };
 
         const savedVariants = this.storage.loadVariantGroups();
-        this.state.variantGroups =
-          Array.isArray(savedVariants) && savedVariants.length > 0
-            ? savedVariants
-            : DEFAULT_VARIANT_GROUPS.map((g) => ({ ...g, terms: [...g.terms] }));
+        if (Array.isArray(savedVariants) && savedVariants.length > 0) {
+          // 「物 / もの」(var_mono) を除外し、拡充された標準辞書の新規グループを補完する
+          const filtered = savedVariants.filter((g) => g && g.id !== 'var_mono');
+          const existingIds = new Set(filtered.map((g) => g.id));
+          const added = DEFAULT_VARIANT_GROUPS.filter((g) => !existingIds.has(g.id)).map((g) => ({
+            ...g,
+            terms: [...g.terms],
+          }));
+          this.state.variantGroups = [...filtered, ...added];
+          if (filtered.length !== savedVariants.length || added.length > 0) {
+            this.storage.saveVariantGroups(this.state.variantGroups);
+          }
+        } else {
+          this.state.variantGroups = DEFAULT_VARIANT_GROUPS.map((g) => ({ ...g, terms: [...g.terms] }));
+        }
 
         const savedLatex = this.storage.loadLatexOptions();
         this.state.latexOptions = {
@@ -1496,14 +2065,14 @@
       }
 
       /**
-       * 個別の指摘を無視する
+       * 個別の指摘を無視する。表記揺れ指摘を無視した場合は「こと」等他方への影響を再評価するため再検査する。
        * @param {string} issueId
        */
       ignoreIssue(issueId) {
         const issue = this.state.issues.find((i) => i.id === issueId);
         if (!issue) return;
         this.ignores.ignoreIssue(issue, this.state.text);
-        this._refreshIgnoreFlags();
+        this._afterIgnoreChanged(issue.ruleId);
       }
 
       /**
@@ -1514,7 +2083,98 @@
         const issue = this.state.issues.find((i) => i.id === issueId);
         if (!issue) return;
         this.ignores.unignoreIssue(issue, this.state.text);
-        this._refreshIgnoreFlags();
+        this._afterIgnoreChanged(issue.ruleId);
+      }
+
+      /**
+       * 複数の表記揺れ出現箇所をまとめて無視する
+       * @param {{ start: number, end: number, term: string }[]} occurrences
+       */
+      ignoreVariantOccurrences(occurrences) {
+        for (const occ of occurrences) {
+          this.ignores.ignoreIssue(
+            {
+              ruleId: 'variant.inconsistency',
+              start: occ.start,
+              end: occ.end,
+              matchedText: occ.term,
+            },
+            this.state.text
+          );
+        }
+        this.storage.saveIgnores(this.ignores.serialize());
+        this.runProofreadNow();
+      }
+
+      /**
+       * 複数の表記揺れ出現箇所の無視をまとめて解除する
+       * @param {{ start: number, end: number, term: string }[]} occurrences
+       */
+      unignoreVariantOccurrences(occurrences) {
+        for (const occ of occurrences) {
+          this.ignores.unignoreIssue(
+            {
+              ruleId: 'variant.inconsistency',
+              start: occ.start,
+              end: occ.end,
+              matchedText: occ.term,
+            },
+            this.state.text
+          );
+        }
+        this.storage.saveIgnores(this.ignores.serialize());
+        this.runProofreadNow();
+      }
+
+      /**
+       * 表記揺れグループ全体を一括で無視する
+       * @param {string} groupId
+       */
+      ignoreVariantGroup(groupId) {
+        this.ignores.ignoreVariantGroup(groupId);
+        this.storage.saveIgnores(this.ignores.serialize());
+        this.runProofreadNow();
+      }
+
+      /**
+       * 表記揺れグループ単位の無視を解除する
+       * @param {string} groupId
+       */
+      unignoreVariantGroup(groupId) {
+        this.ignores.unignoreVariantGroup(groupId);
+        this.storage.saveIgnores(this.ignores.serialize());
+        this.runProofreadNow();
+      }
+
+      /**
+       * 記号・文字種の一括統一変換（すべて全角チルダにする等）を実行する（1回の Undo で復元可能）
+       * @param {string} transformId
+       * @returns {boolean}
+       */
+      runSymbolTransform(transformId) {
+        const transform = getSymbolTransform(transformId);
+        if (!transform) return false;
+
+        if (transform.ruleSettingPatch) {
+          const { ruleId, options } = transform.ruleSettingPatch;
+          const cur = this.state.ruleSettings[ruleId];
+          if (cur) {
+            this.state.ruleSettings[ruleId] = {
+              ...cur,
+              options: { ...cur.options, ...options },
+            };
+            this.storage.saveRuleSettings(this.state.ruleSettings);
+            this.bus.emit('settings:updated', this.state.ruleSettings);
+          }
+        }
+
+        const nextText = transform.apply(this.state.text);
+        if (nextText !== this.state.text) {
+          this.applyBatchTextChange(nextText, transform.label);
+        } else {
+          this.runProofreadNow();
+        }
+        return true;
       }
 
       /**
@@ -1532,6 +2192,15 @@
        */
       unignoreRule(ruleId) {
         this.ignores.unignoreRule(ruleId);
+        this._refreshIgnoreFlags();
+      }
+
+      _afterIgnoreChanged(ruleId) {
+        if (ruleId === 'variant.inconsistency') {
+          this.storage.saveIgnores(this.ignores.serialize());
+          this.runProofreadNow();
+          return;
+        }
         this._refreshIgnoreFlags();
       }
 
@@ -1948,6 +2617,32 @@
       '—': '— (U+2014 EMダッシュ)',
     };
 
+    const ELLIPSIS_CHAR_LABEL = {
+      '…': '三点リーダー「…」(U+2026)',
+      '⋯': '中線三点リーダー「⋯」(U+22EF)',
+    };
+
+    const DASH_CHAR_LABEL = {
+      '―': 'ホリゾンタルバー「―」(U+2015)',
+      '—': 'EMダッシュ「—」(U+2014)',
+      '─': '細罫線「─」(U+2500)',
+      '━': '太罫線「━」(U+2501)',
+    };
+
+    const PUNCT_CHAR_LABEL = {
+      '。': '全角句点「。」',
+      '、': '全角読点「、」',
+      '．': '全角ピリオド「．」',
+      '，': '全角カンマ「，」',
+      '.': '半角ピリオド「.」',
+      ',': '半角カンマ「,」',
+    };
+
+    const WAVE_DASH_LABEL = {
+      '〜': '波ダッシュ「〜」(U+301C)',
+      '～': '全角チルダ「～」(U+FF5E)',
+    };
+
     /**
      * 1. 約物・記号カテゴリの校正ルール群
      */
@@ -2030,7 +2725,7 @@
         id: 'punct.ellipsis-sub',
         name: '三点リーダーの代用表記',
         category: 'punctuation',
-        description: '「・・・」「･･･」「...」「。。。」など三点リーダーの代用表記を検出します。',
+        description: '「・・・」「･･･」「...」「．．」など三点リーダーの代用表記を検出します。',
         defaultSeverity: 'error',
         defaultEnabled: true,
         defaultOptions: { preferredChar: '…' },
@@ -2049,13 +2744,18 @@
           const target = (opts.preferredChar || '…').repeat(2);
           const issues = [];
           forEachMatch(ctx.text, /(?:[・･]{3,}|\.{3,}|．{2,})/g, (m) => {
-            // URL内ピリオド連続はほぼないが念のため確認
             issues.push(
               ctx.createIssue({
                 start: m.index,
                 end: m.index + m[0].length,
                 message: `三点リーダーの代用表記「${m[0]}」が使われています。`,
                 suggestions: [{ label: `「${target}」に置換`, replacement: target }],
+                extra: {
+                  batchTransforms: [
+                    { id: 'to-std-ellipsis', label: '代用・異体字をすべて「…」(U+2026) に統一' },
+                    { id: 'to-midline-ellipsis', label: '代用・異体字をすべて「⋯」(U+22EF) に統一' },
+                  ],
+                },
               })
             );
           });
@@ -2106,7 +2806,7 @@
         id: 'punct.ellipsis-mix',
         name: '三点リーダーの異体字混在',
         category: 'punctuation',
-        description: '標準の三点リーダー「…」(U+2026) と中線三点「⋯」(U+22EF) の混在を検出します。',
+        description: '標準の三点リーダー「…」(U+2026) と中線三点リーダー「⋯」(U+22EF) の混在を検出します。',
         defaultSeverity: 'warning',
         defaultEnabled: true,
         defaultOptions: { preferredChar: '…' },
@@ -2135,10 +2835,14 @@
               ctx.createIssue({
                 start: m.index,
                 end: m.index + m[0].length,
-                message: hasBoth
-                  ? `三点リーダーの異体字（… と ⋯）が混在しています。`
-                  : `設定された標準文字「${preferred}」と異なる三点リーダー「${other}」が使われています。`,
+                message: `${ELLIPSIS_CHAR_LABEL[other]}が使われています（標準設定: ${ELLIPSIS_CHAR_LABEL[preferred]}）。`,
                 suggestions: [{ label: `「${rep}」に統一`, replacement: rep }],
+                extra: {
+                  batchTransforms: [
+                    { id: 'to-std-ellipsis', label: 'すべて「…」(U+2026) に統一' },
+                    { id: 'to-midline-ellipsis', label: 'すべて「⋯」(U+22EF) に統一' },
+                  ],
+                },
               })
             );
           });
@@ -2168,15 +2872,26 @@
           const preferred = opts.preferredChar || '―';
           const variants = ['―', '—', '─', '━'].filter((c) => c !== preferred);
           const re = new RegExp(`[${variants.join('')}]+`, 'g');
+          const dashSubEnabled = ctx.allSettings['punct.dash-sub']?.enabled !== false;
           const issues = [];
           forEachMatch(ctx.text, re, (m) => {
+            // 2文字以上の罫線（── 等）は dash-sub 有効時に重複指摘しない
+            if (dashSubEnabled && m[0].length >= 2 && /[─━]/.test(m[0])) return;
+            const ch = m[0][0];
             const rep = preferred.repeat(m[0].length);
+            const charLabel = DASH_CHAR_LABEL[ch] || `文字「${ch}」`;
             issues.push(
               ctx.createIssue({
                 start: m.index,
                 end: m.index + m[0].length,
-                message: `ダッシュ文字種「${m[0][0]}」が使用されています（標準設定: 「${preferred}」）。`,
+                message: `${charLabel}が使われています（標準設定: ${DASH_CHAR_LABEL[preferred]}）。`,
                 suggestions: [{ label: `「${rep}」に統一`, replacement: rep }],
+                extra: {
+                  batchTransforms: [
+                    { id: 'to-horizontal-bar', label: 'ダッシュ類をすべて「―」(U+2015) に統一' },
+                    { id: 'to-em-dash', label: 'ダッシュ類をすべて「—」(U+2014) に統一' },
+                  ],
+                },
               })
             );
           });
@@ -2240,7 +2955,7 @@
                 ctx.createIssue({
                   start: idx,
                   end: idx + 1,
-                  message: `句読点「${ch}」が標準形式（「${expected}」）と異なっています。`,
+                  message: `${PUNCT_CHAR_LABEL[ch]}が使われています（標準設定: ${PUNCT_CHAR_LABEL[expected]}）。`,
                   suggestions: [{ label: `「${expected}」に置換`, replacement: expected }],
                 })
               );
@@ -2292,6 +3007,9 @@
                   ? `半角の疑問符・感嘆符「${m[0]}」が使用されています。`
                   : `全角の疑問符・感嘆符「${m[0]}」が使用されています。`,
                 suggestions: [{ label: `「${rep}」に置換`, replacement: rep }],
+                extra: full
+                  ? { batchTransforms: [{ id: 'half-qe-to-full', label: '半角「?!」をすべて全角「？！」に変換' }] }
+                  : undefined,
               })
             );
           });
@@ -2300,16 +3018,16 @@
       },
       {
         id: 'punct.wave-dash-mix',
-        name: '波ダッシュの文字種混在',
+        name: '波ダッシュ・全角チルダの混在',
         category: 'punctuation',
-        description: '「〜」(U+301C) と全角チルダ「～」(U+FF5E) の混在を検出します。',
+        description: '波ダッシュ「〜」(U+301C) と全角チルダ「～」(U+FF5E) の混在を検出します。',
         defaultSeverity: 'warning',
         defaultEnabled: true,
         defaultOptions: { preferredChar: '〜' },
         optionSchema: [
           {
             key: 'preferredChar',
-            label: '統一する波ダッシュ文字',
+            label: '統一する文字',
             type: 'select',
             choices: [
               { value: '〜', label: '〜 (U+301C 波ダッシュ)' },
@@ -2326,8 +3044,14 @@
               ctx.createIssue({
                 start: m.index,
                 end: m.index + 1,
-                message: `波ダッシュ「${other}」が使われています（標準設定: 「${preferred}」）。混在に注意してください。`,
+                message: `${WAVE_DASH_LABEL[other]}が使われています（標準設定: ${WAVE_DASH_LABEL[preferred]}）。混在に注意してください。`,
                 suggestions: [{ label: `「${preferred}」に置換`, replacement: preferred }],
+                extra: {
+                  batchTransforms: [
+                    { id: 'to-fullwidth-tilde', label: '原稿内をすべて全角チルダ「～」(U+FF5E) に統一' },
+                    { id: 'to-wave-dash', label: '原稿内をすべて波ダッシュ「〜」(U+301C) に統一' },
+                  ],
+                },
               })
             );
           });
@@ -2621,7 +3345,7 @@
         id: 'punct.unnatural-space',
         name: '約物の前後の不自然な空白',
         category: 'punctuation',
-        description: '中黒「・」や三点リーダー「…」、ダッシュ「―」の前後に不自然な空白が入っていないか検査します。',
+        description: '中黒「・」の前後に不自然な空白が入っていないか検査します。',
         defaultSeverity: 'warning',
         defaultEnabled: true,
         defaultOptions: {},
@@ -3556,12 +4280,12 @@
         description: '1段落の文字数が設定上限を超えている箇所を検出します（読みやすさ確認用）。',
         defaultSeverity: 'warning',
         defaultEnabled: true,
-        defaultOptions: { maxChars: 250 },
+        defaultOptions: { maxChars: 500 },
         optionSchema: [
           { key: 'maxChars', label: '1段落の最大文字数', type: 'number', min: 50, max: 2000 },
         ],
         check(ctx, opts) {
-          const maxChars = Math.max(50, Number(opts.maxChars ?? 250));
+          const maxChars = Math.max(50, Number(opts.maxChars ?? 500));
           const issues = [];
           for (const line of ctx.lines) {
             if (line.isBlank) continue;
@@ -3755,6 +4479,19 @@
       '︱': '―', '︙': '…',
     };
 
+    const HYPHEN_CHAR_LABEL = {
+      '-': '半角ハイフン「-」(U+002D)',
+      '‐': '全角ハイフン「‐」(U+2010)',
+      '−': '全角マイナス「−」(U+2212)',
+      '–': 'ENダッシュ「–」(U+2013)',
+    };
+
+    function classifyAlnumKind(str) {
+      if (/^[0-9０-９]+$/.test(str)) return '数字';
+      if (/^[A-Za-zＡ-Ｚａ-ｚ]+$/.test(str)) return '英字';
+      return '英数字';
+    }
+
     /**
      * 範囲が URL / メールアドレス内に含まれるか判定する
      */
@@ -3806,7 +4543,7 @@
               ctx.createIssue({
                 start,
                 end,
-                message: `半角英数字「${m[0]}」が使用されています。`,
+                message: `半角${classifyAlnumKind(m[0])}「${m[0]}」が使用されています。`,
                 suggestions,
               })
             );
@@ -3831,7 +4568,7 @@
               ctx.createIssue({
                 start: m.index,
                 end: m.index + m[0].length,
-                message: `全角英数字「${m[0]}」が使用されています。`,
+                message: `全角${classifyAlnumKind(m[0])}「${m[0]}」が使用されています。`,
                 suggestions: [{ label: `半角「${half}」に変換`, replacement: half }],
               })
             );
@@ -3902,6 +4639,11 @@
                 end: m.index + m[0].length,
                 message: `半角カタカナ「${m[0]}」が使われています。`,
                 suggestions: [{ label: `全角「${full}」に変換`, replacement: full }],
+                extra: {
+                  batchTransforms: [
+                    { id: 'half-kana-to-full', label: '原稿内の半角カタカナをすべて全角に変換' },
+                  ],
+                },
               })
             );
           });
@@ -4201,11 +4943,13 @@
           const issues = [];
           for (const m of matches) {
             if (m.ch !== preferred) {
+              const chLabel = HYPHEN_CHAR_LABEL[m.ch] || `文字「${m.ch}」`;
+              const prefLabel = HYPHEN_CHAR_LABEL[preferred] || `文字「${preferred}」`;
               issues.push(
                 ctx.createIssue({
                   start: m.start,
                   end: m.end,
-                  message: `ハイフン類（${[...foundChars].join(' / ')}）が混在しています。`,
+                  message: `${chLabel}が使われています（標準設定: ${prefLabel}）。ハイフン類の混在に注意してください。`,
                   suggestions: [{ label: `「${preferred}」に統一`, replacement: preferred }],
                 })
               );
@@ -4278,6 +5022,11 @@
                 end: m.index + 1,
                 message: `半角括弧「${m[0]}」が使われています。和文中では全角括弧「${full}」を推奨します。`,
                 suggestions: [{ label: `全角「${full}」に変換`, replacement: full }],
+                extra: {
+                  batchTransforms: [
+                    { id: 'half-paren-to-full', label: '半角丸括弧「()」をすべて全角「（）」に変換' },
+                  ],
+                },
               })
             );
           });
@@ -4439,206 +5188,6 @@
     __exports.characterRules = characterRules;
   });
 
-  __define('src/services/VariantService.js', function (__exports, __require) {
-    const { createId, escapeRegExp, extractContextSnippet, forEachMatch } = __require('src/utils/textUtils.js');
-
-    const KANJI_CHAR_RE = /[\u4E00-\u9FFF々ヶ〆〇]/;
-    const ASCII_WORD_RE = /[A-Za-z0-9]/;
-
-    /**
-     * 表記揺れ辞書の集計・出現箇所抽出・個別除外付き一括置換・プレビューを担当する
-     */
-    class VariantService {
-      /**
-       * 境界判定を行い、複合語中の誤検出を抑止するかどうかを判定する
-       * @param {string} text
-       * @param {number} start
-       * @param {number} end
-       * @param {string} term
-       * @param {boolean} boundaryCheck
-       * @returns {boolean}
-       */
-      isValidMatch(text, start, end, term, boundaryCheck) {
-        const prev = start > 0 ? text[start - 1] : '';
-        const next = end < text.length ? text[end] : '';
-
-        // 英数字用語は前後に英数字が連続する部分一致を除外
-        if (/^[A-Za-z0-9_.\-]+$/.test(term)) {
-          if ((prev && ASCII_WORD_RE.test(prev)) || (next && ASCII_WORD_RE.test(next))) {
-            return false;
-          }
-        }
-
-        if (boundaryCheck) {
-          // 単漢字語（事・物・時・所・私など）や短い漢字語の前後に漢字がくっついている熟語を除外
-          if (KANJI_CHAR_RE.test(term[0]) && prev && KANJI_CHAR_RE.test(prev)) {
-            return false;
-          }
-          if (KANJI_CHAR_RE.test(term[term.length - 1]) && next && KANJI_CHAR_RE.test(next)) {
-            return false;
-          }
-        }
-
-        return true;
-      }
-
-      /**
-       * 行番号計算用テーブルを構築
-       * @param {string} text
-       */
-      _buildLineStarts(text) {
-        const starts = [0];
-        for (let i = 0; i < text.length; i++) {
-          if (text[i] === '\n') {
-            starts.push(i + 1);
-          }
-        }
-        return starts;
-      }
-
-      _getLineNumber(lineStarts, offset) {
-        let lo = 0;
-        let hi = lineStarts.length - 1;
-        while (lo <= hi) {
-          const mid = (lo + hi) >> 1;
-          if (lineStarts[mid] <= offset) {
-            if (mid + 1 >= lineStarts.length || lineStarts[mid + 1] > offset) {
-              return mid + 1;
-            }
-            lo = mid + 1;
-          } else {
-            hi = mid - 1;
-          }
-        }
-        return 1;
-      }
-
-      /**
-       * 原稿内の全表記揺れグループの出現状況を集計する
-       * @param {string} text
-       * @param {any[]} variantGroups
-       */
-      analyzeAllGroups(text, variantGroups) {
-        const lineStarts = this._buildLineStarts(text);
-
-        return variantGroups.map((group) => {
-          const terms = (group.terms || []).filter(Boolean);
-          const termStats = {};
-          for (const term of terms) {
-            termStats[term] = 0;
-          }
-          const occurrences = [];
-
-          if (terms.length > 0) {
-            // 長い語を優先してマッチさせ、同一箇所への重複マッチを防ぐ
-            const sortedTerms = [...terms].sort((a, b) => b.length - a.length);
-            const pattern = new RegExp(sortedTerms.map(escapeRegExp).join('|'), 'g');
-
-            forEachMatch(text, pattern, (m) => {
-              const term = m[0];
-              const start = m.index;
-              const end = start + term.length;
-              if (!this.isValidMatch(text, start, end, term, Boolean(group.boundaryCheck))) {
-                return;
-              }
-              termStats[term] = (termStats[term] || 0) + 1;
-              occurrences.push({
-                id: `${group.id}_${start}_${end}`,
-                term,
-                start,
-                end,
-                line: this._getLineNumber(lineStarts, start),
-                snippet: extractContextSnippet(text, start, end, 18),
-              });
-            });
-          }
-
-          const activeTerms = Object.entries(termStats)
-            .filter(([, count]) => count > 0)
-            .map(([term]) => term);
-          const totalCount = occurrences.length;
-          const hasConflict =
-            activeTerms.length > 1 ||
-            (Boolean(group.preferred) &&
-              activeTerms.some((t) => t !== group.preferred));
-
-          return {
-            group,
-            termStats,
-            activeTerms,
-            totalCount,
-            hasConflict,
-            occurrences,
-          };
-        });
-      }
-
-      /**
-       * 指定グループに対して統一先表記を適用した場合の置換対象一覧とプレビューを生成する
-       * @param {string} text
-       * @param {object} groupAnalysis
-       * @param {string} targetTerm
-       * @param {Set<string>} excludedOccurrenceIds
-       */
-      buildBatchPreview(text, groupAnalysis, targetTerm, excludedOccurrenceIds = new Set()) {
-        const targets = groupAnalysis.occurrences.filter((occ) => occ.term !== targetTerm);
-        const activeReplacements = targets.filter((occ) => !excludedOccurrenceIds.has(occ.id));
-
-        // プレビュー用テキスト生成（後ろから置換）
-        let previewText = text;
-        const sortedDesc = [...activeReplacements].sort((a, b) => b.start - a.start);
-        for (const occ of sortedDesc) {
-          previewText =
-            previewText.slice(0, occ.start) + targetTerm + previewText.slice(occ.end);
-        }
-
-        // 変更行の差分プレビュー配列を生成
-        const beforeLines = text.split('\n');
-        const afterLines = previewText.split('\n');
-        const changedLineNumbers = [...new Set(activeReplacements.map((o) => o.line))].sort((a, b) => a - b);
-        const lineDiffs = changedLineNumbers.map((ln) => ({
-          line: ln,
-          before: beforeLines[ln - 1] ?? '',
-          after: afterLines[ln - 1] ?? '',
-        }));
-
-        return {
-          targets,
-          activeCount: activeReplacements.length,
-          excludedCount: targets.length - activeReplacements.length,
-          previewText,
-          lineDiffs,
-        };
-      }
-
-      /**
-       * 新規表記揺れグループ定義を作成する
-       * @param {string} termsCsv
-       * @param {string} preferred
-       * @param {boolean} boundaryCheck
-       */
-      createGroup(termsCsv, preferred = '', boundaryCheck = false) {
-        const terms = termsCsv
-          .split(/[,、\/／\s]+/)
-          .map((s) => s.trim())
-          .filter(Boolean);
-        const uniqueTerms = [...new Set(terms)];
-        if (uniqueTerms.length < 2) {
-          throw new Error('表記揺れグループには2つ以上の異なる表記を指定してください。');
-        }
-        return {
-          id: createId('var'),
-          label: uniqueTerms.join(' / '),
-          terms: uniqueTerms,
-          preferred: uniqueTerms.includes(preferred) ? preferred : '',
-          boundaryCheck: Boolean(boundaryCheck),
-        };
-      }
-    }
-
-    __exports.VariantService = VariantService;
-  });
-
   __define('src/rules/categories/variants.js', function (__exports, __require) {
     const { VariantService } = __require('src/services/VariantService.js');
 
@@ -4658,22 +5207,33 @@
         defaultOptions: {},
         optionSchema: [],
         check(ctx) {
-          const analyses = variantService.analyzeAllGroups(ctx.text, ctx.variantGroups);
+          const analyses = variantService.analyzeAllGroups(
+            ctx.text,
+            ctx.variantGroups,
+            ctx.ignoreManager
+          );
           const issues = [];
 
           for (const analysis of analyses) {
-            if (!analysis.hasConflict) continue;
-            const { group, termStats, activeTerms, occurrences } = analysis;
-            const summary = activeTerms
-              .map((t) => `「${t}」(${termStats[t]}回)`)
+            const { group, activeTermStats, activeTerms, allPresentTerms, hasConflict, occurrences } =
+              analysis;
+
+            // 有効（未無視）な表記間で競合がない場合でも、無視済みとして記録されている出現箇所は
+            // 「無視済」タブから解除できるよう保持し、他方の有効表記（例：「こと」20回）の警告は出さない。
+            const summaryTerms = activeTerms.length > 0 ? activeTerms : allPresentTerms;
+            const summary = summaryTerms
+              .map((t) => `「${t}」(${activeTermStats[t] ?? analysis.termStats[t]}回)`)
               .join(' / ');
 
             for (const occ of occurrences) {
-              if (group.preferred && occ.term === group.preferred) continue;
+              if (!hasConflict && !occ.ignored) continue;
+              if (!occ.ignored && group.preferred && occ.term === group.preferred) continue;
 
               const targetCandidates = group.preferred
                 ? [group.preferred]
-                : activeTerms.filter((t) => t !== occ.term);
+                : (activeTerms.length > 1 ? activeTerms : allPresentTerms).filter(
+                    (t) => t !== occ.term
+                  );
 
               const suggestions = targetCandidates.map((target) => ({
                 label: `「${target}」に統一`,
@@ -5003,7 +5563,7 @@
         id: 'pattern.editor-comment',
         name: '編集用コメント・マーカーの残存',
         category: 'patterns',
-        description: '「// ...」「<!-- ... -->」「【注：...】」「※...」などの編集用メモ・コメント残存を検出します。',
+        description: '「// ...」「<!-- ... -->」「【注：...】」などの編集用メモ・コメント残存を検出します。',
         defaultSeverity: 'error',
         defaultEnabled: true,
         defaultOptions: {},
@@ -5381,7 +5941,7 @@
         id: 'ruby.unsupported-notation',
         name: '不正または未対応のルビ特殊記法',
         category: 'ruby',
-        description: '連続したルビ指定記号「｜｜」や、後ろに《ルビ》が続かない単独「｜」、括弧記号「{{...}}」等を検出します。',
+        description: '連続したルビ指定記号「｜｜」や、後ろに《ルビ》が続かない単独「｜」を検出します。',
         defaultSeverity: 'warning',
         defaultEnabled: true,
         defaultOptions: {},
@@ -5944,6 +6504,9 @@
 
         this.resizer.addEventListener('pointerup', endDrag);
         this.resizer.addEventListener('pointercancel', endDrag);
+        this.resizer.addEventListener('dblclick', () => {
+          this.store.updateDisplaySettings({ splitRatio: 0.5 });
+        });
       }
 
       _subscribeStore() {
@@ -6288,6 +6851,13 @@
           this.modal.close();
         });
 
+        this.modal.bodyEl.addEventListener('click', (e) => {
+          if (e.target.id === 'btn-disp-reset-split') {
+            this.store.updateDisplaySettings({ splitRatio: 0.5 });
+            this.render();
+          }
+        });
+
         this.modal.bodyEl.addEventListener('change', (e) => {
           const target = e.target;
           if (target.name === 'writingMode') {
@@ -6372,6 +6942,14 @@
             <div class="form-group">
               <label class="form-label" for="disp-line-height">行間: <strong id="disp-line-height-val">${Number(d.lineHeight).toFixed(2)}</strong></label>
               <input type="range" id="disp-line-height" min="1.4" max="2.6" step="0.05" value="${d.lineHeight}" />
+            </div>
+
+            <div class="form-group">
+              <label class="form-label">画面分割比率（編集 : 校正プレビュー）</label>
+              <div class="radio-group">
+                <span>現在: <strong>${Math.round((d.splitRatio ?? 0.5) * 100)}% : ${Math.round((1 - (d.splitRatio ?? 0.5)) * 100)}%</strong></span>
+                <button type="button" class="btn btn-xs btn-secondary" id="btn-disp-reset-split" ${Math.abs((d.splitRatio ?? 0.5) - 0.5) < 0.005 ? 'disabled' : ''}>1:1 に戻す</button>
+              </div>
             </div>
 
             <div class="form-group">
@@ -6850,6 +7428,14 @@
             const groupId = btn.dataset.groupId || '';
             this.hide();
             this.onOpenVariants(groupId);
+            return;
+          }
+          if (action === 'batch-transform') {
+            const transformId = btn.dataset.transformId || '';
+            if (transformId) {
+              this.store.runSymbolTransform(transformId);
+              this.hide();
+            }
           }
         });
 
@@ -6927,6 +7513,18 @@
               ? `<button type="button" class="btn btn-xs btn-secondary" data-action="open-variants" data-group-id="${escapeHtml(issue.extra.variantGroupId)}">一括統一を開く</button>`
               : '';
 
+            const batchTransformsHtml =
+              mode === 'pinned' && Array.isArray(issue.extra?.batchTransforms) && issue.extra.batchTransforms.length > 0
+                ? `<div class="popover-batch-transforms">
+                    ${issue.extra.batchTransforms
+                      .map(
+                        (bt) =>
+                          `<button type="button" class="btn btn-xs btn-secondary" data-action="batch-transform" data-transform-id="${escapeHtml(bt.id)}">${escapeHtml(bt.label)}</button>`
+                      )
+                      .join('')}
+                  </div>`
+                : '';
+
             const ignoreControls =
               mode === 'pinned'
                 ? `<div class="popover-actions">
@@ -6950,6 +7548,7 @@
                 <p class="popover-message">${escapeHtml(issue.message)}</p>
                 <div class="popover-matched">対象: <code>${escapeHtml(issue.matchedText.replace(/\n/g, '↵'))}</code></div>
                 ${mode === 'pinned' ? suggestionsHtml : this._renderHoverSuggestionHint(issue)}
+                ${batchTransformsHtml}
                 ${ignoreControls}
               </div>
             `;
@@ -7928,12 +8527,12 @@
 
   __define('src/ui/VariantsModal.js', function (__exports, __require) {
     const { DEFAULT_VARIANT_GROUPS } = __require('src/config/defaultVariants.js');
-    const { VariantService } = __require('src/services/VariantService.js');
+    const { SYMBOL_TRANSFORMS, VariantService } = __require('src/services/VariantService.js');
     const { escapeHtml } = __require('src/utils/textUtils.js');
     const { createModal } = __require('src/ui/modalHelper.js');
 
     /**
-     * 表記揺れの一括編集・個別除外付き一括置換・変更プレビュー・辞書登録モーダル
+     * 表記揺れの一括編集・個別/グループ無視・記号文字種の一括変換・辞書登録モーダル
      */
     class VariantsModal {
       /**
@@ -7943,17 +8542,19 @@
       constructor({ store }) {
         this.store = store;
         this.service = new VariantService();
-        this.activeTab = 'unify'; // 'unify' | 'dictionary'
+        this.activeTab = 'unify'; // 'unify' | 'symbols' | 'dictionary'
         this.selectedGroupId = null;
         this.targetTerm = '';
         this.excludedIds = new Set();
         this.showOnlyConflicts = false;
+        this.symbolStatusMsg = '';
 
         this.modal = createModal({
           id: 'variants-modal',
-          title: '表記揺れの一括編集・辞書管理',
+          title: '表記揺れの一括編集・記号変換・辞書管理',
           sizeClass: 'modal--xl',
           onOpen: (groupId) => {
+            this.symbolStatusMsg = '';
             if (groupId) {
               this.activeTab = 'unify';
               this.selectedGroupId = groupId;
@@ -7965,7 +8566,7 @@
         });
 
         this.modal.footerEl.innerHTML = `
-          <span class="footer-note">※ 一括置換は1回の Undo (Ctrl+Z) で元に戻せます。</span>
+          <span class="footer-note">※ 一括置換・記号変換は1回の Undo (Ctrl+Z) で元に戻せます。</span>
           <div class="spacer"></div>
           <button type="button" class="btn btn-secondary" id="btn-close-variants">閉じる</button>
         `;
@@ -7986,6 +8587,7 @@
           const tabBtn = e.target.closest('button[data-var-tab]');
           if (tabBtn) {
             this.activeTab = tabBtn.dataset.varTab;
+            this.symbolStatusMsg = '';
             this.render();
             return;
           }
@@ -8004,6 +8606,81 @@
             this.targetTerm = termBtn.dataset.targetTerm;
             this.excludedIds.clear();
             this.render();
+            return;
+          }
+
+          const toggleGroupIgnoreBtn = e.target.closest('button[data-toggle-group-ignore]');
+          if (toggleGroupIgnoreBtn) {
+            const gid = toggleGroupIgnoreBtn.dataset.toggleGroupIgnore;
+            if (this.store.ignores.isVariantGroupIgnored(gid)) {
+              this.store.unignoreVariantGroup(gid);
+            } else {
+              this.store.ignoreVariantGroup(gid);
+            }
+            this.render();
+            return;
+          }
+
+          const ignoreTermBtn = e.target.closest('button[data-ignore-term]');
+          if (ignoreTermBtn) {
+            const term = ignoreTermBtn.dataset.ignoreTerm;
+            const analysis = this._getSelectedAnalysis();
+            if (analysis) {
+              const occs = analysis.occurrences.filter((o) => o.term === term && !o.ignored);
+              this.store.ignoreVariantOccurrences(occs);
+              this.render();
+            }
+            return;
+          }
+
+          const unignoreTermBtn = e.target.closest('button[data-unignore-term]');
+          if (unignoreTermBtn) {
+            const term = unignoreTermBtn.dataset.unignoreTerm;
+            const analysis = this._getSelectedAnalysis();
+            if (analysis) {
+              const occs = analysis.occurrences.filter((o) => o.term === term && o.ignored);
+              this.store.unignoreVariantOccurrences(occs);
+              this.render();
+            }
+            return;
+          }
+
+          const ignoreOccBtn = e.target.closest('button[data-ignore-occ-id]');
+          if (ignoreOccBtn) {
+            e.preventDefault();
+            e.stopPropagation();
+            const occId = ignoreOccBtn.dataset.ignoreOccId;
+            const analysis = this._getSelectedAnalysis();
+            const occ = analysis?.occurrences.find((o) => o.id === occId);
+            if (occ) {
+              this.store.ignoreVariantOccurrences([occ]);
+              this.render();
+            }
+            return;
+          }
+
+          const unignoreOccBtn = e.target.closest('button[data-unignore-occ-id]');
+          if (unignoreOccBtn) {
+            e.preventDefault();
+            e.stopPropagation();
+            const occId = unignoreOccBtn.dataset.unignoreOccId;
+            const analysis = this._getSelectedAnalysis();
+            const occ = analysis?.occurrences.find((o) => o.id === occId);
+            if (occ) {
+              this.store.unignoreVariantOccurrences([occ]);
+              this.render();
+            }
+            return;
+          }
+
+          const symBtn = e.target.closest('button[data-run-symbol-transform]');
+          if (symBtn) {
+            const tid = symBtn.dataset.runSymbolTransform;
+            const def = SYMBOL_TRANSFORMS.find((t) => t.id === tid);
+            if (def && this.store.runSymbolTransform(tid)) {
+              this.symbolStatusMsg = `「${def.label}」を実行しました（Ctrl+Z で取り消せます）。`;
+              this.render();
+            }
             return;
           }
 
@@ -8102,7 +8779,8 @@
       _getAnalyses() {
         return this.service.analyzeAllGroups(
           this.store.state.text,
-          this.store.state.variantGroups
+          this.store.state.variantGroups,
+          this.store.ignores
         );
       }
 
@@ -8134,9 +8812,15 @@
         const tabsHtml = `
           <div class="modal-tabs">
             <button type="button" class="cat-tab ${this.activeTab === 'unify' ? 'is-active' : ''}" data-var-tab="unify">表記揺れ一括統一</button>
-            <button type="button" class="cat-tab ${this.activeTab === 'dictionary' ? 'is-active' : ''}" data-var-tab="dictionary">辞書管理・固有名詞登録</button>
+            <button type="button" class="cat-tab ${this.activeTab === 'symbols' ? 'is-active' : ''}" data-var-tab="symbols">記号・文字種の一括変換</button>
+            <button type="button" class="cat-tab ${this.activeTab === 'dictionary' ? 'is-active' : ''}" data-var-tab="dictionary">辞書管理・固有名詞登録 (${this.store.state.variantGroups.length})</button>
           </div>
         `;
+
+        if (this.activeTab === 'symbols') {
+          this._renderSymbolsTab(tabsHtml);
+          return;
+        }
 
         if (this.activeTab === 'dictionary') {
           this._renderDictionaryTab(tabsHtml);
@@ -8152,7 +8836,7 @@
         });
 
         const visibleList = this.showOnlyConflicts
-          ? sorted.filter((a) => a.hasConflict)
+          ? sorted.filter((a) => a.hasConflict || a.hasRawConflict)
           : sorted;
 
         if (
@@ -8166,12 +8850,11 @@
 
         if (selected) {
           if (!this.targetTerm || !selected.group.terms.includes(this.targetTerm)) {
-            // 出現回数が最多の語または推奨語をデフォルト選択
             if (selected.group.preferred) {
               this.targetTerm = selected.group.preferred;
             } else {
               const top = [...selected.group.terms].sort(
-                (a, b) => (selected.termStats[b] || 0) - (selected.termStats[a] || 0)
+                (a, b) => (selected.activeTermStats[b] || 0) - (selected.activeTermStats[a] || 0)
               )[0];
               this.targetTerm = top || selected.group.terms[0] || '';
             }
@@ -8183,13 +8866,25 @@
             ? visibleList
                 .map((a) => {
                   const statsSummary = a.group.terms
-                    .map((t) => `${t}: ${a.termStats[t] || 0}`)
+                    .map((t) => {
+                      const total = a.termStats[t] || 0;
+                      const ign = a.ignoredTermStats[t] || 0;
+                      return ign > 0 ? `${t}: ${total}(無視${ign})` : `${t}: ${total}`;
+                    })
                     .join(' / ');
+                  const badgeHtml = a.groupIgnored
+                    ? '<span class="badge badge--muted">グループ無視</span>'
+                    : a.hasConflict
+                    ? '<span class="badge badge--warning">揺れ</span>'
+                    : a.ignoredCount > 0 && a.hasRawConflict
+                    ? '<span class="badge badge--muted">無視済</span>'
+                    : '';
+
                   return `
                     <button type="button" class="var-group-item ${a.group.id === this.selectedGroupId ? 'is-active' : ''} ${a.hasConflict ? 'has-conflict' : ''}" data-group-id="${escapeHtml(a.group.id)}">
                       <div class="var-group-title">
                         <span>${escapeHtml(a.group.label)}</span>
-                        ${a.hasConflict ? '<span class="badge badge--warning">揺れ</span>' : ''}
+                        ${badgeHtml}
                       </div>
                       <div class="var-group-counts">${escapeHtml(statsSummary)}</div>
                     </button>
@@ -8238,13 +8933,46 @@
           })
           .join('');
 
+        const termIgnoreBtnsHtml = selected.group.terms
+          .filter((t) => (selected.termStats[t] || 0) > 0)
+          .map((t) => {
+            const activeCnt = selected.activeTermStats[t] || 0;
+            const ignoredCnt = selected.ignoredTermStats[t] || 0;
+            const parts = [];
+            if (activeCnt > 0 && !selected.groupIgnored) {
+              parts.push(
+                `<button type="button" class="btn btn-xs btn-ghost" data-ignore-term="${escapeHtml(t)}">「${escapeHtml(t)}」(${activeCnt}件)を無視</button>`
+              );
+            }
+            if (ignoredCnt > 0 && !selected.groupIgnored) {
+              parts.push(
+                `<button type="button" class="btn btn-xs btn-secondary" data-unignore-term="${escapeHtml(t)}">「${escapeHtml(t)}」の無視を解除(${ignoredCnt}件)</button>`
+              );
+            }
+            return parts.join('');
+          })
+          .join('');
+
         pane.innerHTML = `
           <div class="var-detail-header">
-            <h3>${escapeHtml(selected.group.label)}</h3>
+            <div class="var-detail-title-row">
+              <h3>${escapeHtml(selected.group.label)}</h3>
+              <button type="button" class="btn btn-xs ${selected.groupIgnored ? 'btn-secondary' : 'btn-ghost'}" data-toggle-group-ignore="${escapeHtml(selected.group.id)}">
+                ${selected.groupIgnored ? 'このグループの無視を解除' : 'このグループ全体を無視'}
+              </button>
+            </div>
             <div class="var-target-selector">
               <span class="var-step-label">統一先の表記を選択:</span>
               <div class="var-term-buttons">${termBtnsHtml}</div>
             </div>
+            ${
+              termIgnoreBtnsHtml
+                ? `<div class="var-ignore-bar">
+                    <span class="var-step-label">表記ごとの無視設定（少数派を無視すると他方の警告も止まります）:</span>
+                    <div class="var-term-buttons">${termIgnoreBtnsHtml}</div>
+                  </div>`
+                : ''
+            }
           </div>
           <div id="variants-preview-section"></div>
         `;
@@ -8276,13 +9004,21 @@
         const targetsHtml = preview.targets
           .map((occ) => {
             const checked = !this.excludedIds.has(occ.id);
+            const ignoreBtn = occ.ignored
+              ? `<button type="button" class="btn btn-xs btn-secondary var-occ-ignore-btn" data-unignore-occ-id="${escapeHtml(occ.id)}">無視解除</button>`
+              : `<button type="button" class="btn btn-xs btn-ghost var-occ-ignore-btn" data-ignore-occ-id="${escapeHtml(occ.id)}">無視</button>`;
+
             return `
-              <label class="var-occ-row ${checked ? '' : 'is-excluded'}">
-                <input type="checkbox" data-occ-id="${escapeHtml(occ.id)}" ${checked ? 'checked' : ''} />
-                <span class="var-occ-line">${occ.line}行</span>
-                <span class="var-occ-snippet">${escapeHtml(occ.snippet.before)}<mark class="snip-hit">${escapeHtml(occ.snippet.target)}</mark>${escapeHtml(occ.snippet.after)}</span>
-                <span class="var-occ-arrow">→ <strong>${escapeHtml(this.targetTerm)}</strong></span>
-              </label>
+              <div class="var-occ-row ${checked ? '' : 'is-excluded'} ${occ.ignored ? 'is-ignored-occ' : ''}">
+                <label class="var-occ-check-area">
+                  <input type="checkbox" data-occ-id="${escapeHtml(occ.id)}" ${checked ? 'checked' : ''} />
+                  <span class="var-occ-line">${occ.line}行</span>
+                  <span class="var-occ-snippet">${escapeHtml(occ.snippet.before)}<mark class="snip-hit">${escapeHtml(occ.snippet.target)}</mark>${escapeHtml(occ.snippet.after)}</span>
+                  <span class="var-occ-arrow">→ <strong>${escapeHtml(this.targetTerm)}</strong></span>
+                </label>
+                ${occ.ignored ? '<span class="badge badge--muted">無視中</span>' : ''}
+                ${ignoreBtn}
+              </div>
             `;
           })
           .join('');
@@ -8318,6 +9054,45 @@
               選択した ${preview.activeCount} 箇所を「${escapeHtml(this.targetTerm)}」に一括置換
             </button>
           </div>
+        `;
+      }
+
+      _renderSymbolsTab(tabsHtml) {
+        const text = this.store.state.text;
+        const ruleSettings = this.store.state.ruleSettings;
+
+        const cardsHtml = SYMBOL_TRANSFORMS.map((t) => {
+          const count = t.countMatches(text);
+          let isCurrentStandard = false;
+          if (t.ruleSettingPatch) {
+            const { ruleId, options } = t.ruleSettingPatch;
+            const curOpts = ruleSettings[ruleId]?.options || {};
+            isCurrentStandard = Object.entries(options).every(([k, v]) => curOpts[k] === v);
+          }
+
+          const canRun = count > 0 || Boolean(t.ruleSettingPatch && !isCurrentStandard);
+
+          return `
+            <div class="symbol-transform-card">
+              <div class="symbol-transform-info">
+                <div class="symbol-transform-title">
+                  <strong>${escapeHtml(t.label)}</strong>
+                  ${isCurrentStandard ? '<span class="badge badge--success">現在の標準設定</span>' : ''}
+                  <span class="badge ${count > 0 ? 'badge--warning' : 'badge--muted'}">対象 ${count}件</span>
+                </div>
+                <p class="symbol-transform-desc">${escapeHtml(t.description)}</p>
+              </div>
+              <button type="button" class="btn btn-sm ${count > 0 ? 'btn-primary' : 'btn-secondary'}" data-run-symbol-transform="${escapeHtml(t.id)}" ${canRun ? '' : 'disabled'}>
+                ${count > 0 ? `${count}箇所を一括変換` : isCurrentStandard ? '統一済み' : '標準に設定'}
+              </button>
+            </div>
+          `;
+        }).join('');
+
+        this.modal.bodyEl.innerHTML = `
+          ${tabsHtml}
+          ${this.symbolStatusMsg ? `<div class="symbol-status-banner">${escapeHtml(this.symbolStatusMsg)}</div>` : ''}
+          <div class="symbol-transform-list">${cardsHtml}</div>
         `;
       }
 
@@ -8391,7 +9166,7 @@
             </table>
           </div>
           <div class="dict-actions">
-            <button type="button" class="btn btn-xs btn-ghost" id="btn-reset-default-variants">初期辞書（22語群）に戻す</button>
+            <button type="button" class="btn btn-xs btn-ghost" id="btn-reset-default-variants">初期辞書（${DEFAULT_VARIANT_GROUPS.length}語群）に戻す</button>
           </div>
         `;
       }
@@ -8453,6 +9228,7 @@
       const dropOverlay = document.getElementById('drop-overlay');
 
       const btnWritingMode = document.getElementById('btn-writing-mode');
+      const btnResetSplit = document.getElementById('btn-reset-split');
       const btnSyncScroll = document.getElementById('btn-sync-scroll');
       const btnThemeToggle = document.getElementById('btn-theme-toggle');
       const btnUndo = document.getElementById('btn-undo');
@@ -8504,6 +9280,8 @@
         const isVertical = d.writingMode === 'vertical';
         btnWritingMode.textContent = isVertical ? '縦書き中 ⇄ 横書きへ' : '横書き中 ⇄ 縦書きへ';
         btnWritingMode.classList.toggle('is-active', isVertical);
+
+        btnResetSplit.disabled = Math.abs((d.splitRatio ?? 0.5) - 0.5) < 0.005;
 
         btnSyncScroll.textContent = d.syncScroll ? 'スクロール同期: ON' : 'スクロール同期: OFF';
         btnSyncScroll.classList.toggle('is-active', d.syncScroll);
@@ -8596,6 +9374,10 @@
         const next = store.state.displaySettings.writingMode === 'vertical' ? 'horizontal' : 'vertical';
         store.updateDisplaySettings({ writingMode: next });
         issuePopover.hide();
+      });
+
+      btnResetSplit.addEventListener('click', () => {
+        store.updateDisplaySettings({ splitRatio: 0.5 });
       });
 
       btnSyncScroll.addEventListener('click', () => {

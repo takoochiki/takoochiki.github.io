@@ -325,7 +325,7 @@ export const rubyRules = [
     id: 'ruby.unsupported-notation',
     name: '不正または未対応のルビ特殊記法',
     category: 'ruby',
-    description: '連続したルビ指定記号「｜｜」や、後ろに《ルビ》が続かない単独「｜」、括弧記号「{{...}}」等を検出します。',
+    description: '連続したルビ指定記号「｜｜」や、後ろに《ルビ》が続かない単独「｜」を検出します。',
     defaultSeverity: 'warning',
     defaultEnabled: true,
     defaultOptions: {},

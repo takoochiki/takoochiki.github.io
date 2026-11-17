@@ -4,6 +4,7 @@ import {
 } from '../config/constants.js';
 import { DEFAULT_VARIANT_GROUPS } from '../config/defaultVariants.js';
 import { SAMPLE_MANUSCRIPT } from '../config/sampleText.js';
+import { getSymbolTransform } from '../services/VariantService.js';
 import { createId, normalizeLineEndings } from '../utils/textUtils.js';
 
 /**
@@ -57,6 +58,11 @@ export class Store {
   init() {
     const savedRuleSettings = this.storage.loadRuleSettings();
     this.state.ruleSettings = this.registry.mergeSettings(savedRuleSettings || {});
+    // 旧初期値(250文字)を保持していた環境は新初期値(500文字)へ移行する
+    if (this.state.ruleSettings['para.max-length']?.options?.maxChars === 250) {
+      this.state.ruleSettings['para.max-length'].options.maxChars = 500;
+      this.storage.saveRuleSettings(this.state.ruleSettings);
+    }
 
     const savedDisplay = this.storage.loadDisplaySettings();
     this.state.displaySettings = {
@@ -65,10 +71,21 @@ export class Store {
     };
 
     const savedVariants = this.storage.loadVariantGroups();
-    this.state.variantGroups =
-      Array.isArray(savedVariants) && savedVariants.length > 0
-        ? savedVariants
-        : DEFAULT_VARIANT_GROUPS.map((g) => ({ ...g, terms: [...g.terms] }));
+    if (Array.isArray(savedVariants) && savedVariants.length > 0) {
+      // 「物 / もの」(var_mono) を除外し、拡充された標準辞書の新規グループを補完する
+      const filtered = savedVariants.filter((g) => g && g.id !== 'var_mono');
+      const existingIds = new Set(filtered.map((g) => g.id));
+      const added = DEFAULT_VARIANT_GROUPS.filter((g) => !existingIds.has(g.id)).map((g) => ({
+        ...g,
+        terms: [...g.terms],
+      }));
+      this.state.variantGroups = [...filtered, ...added];
+      if (filtered.length !== savedVariants.length || added.length > 0) {
+        this.storage.saveVariantGroups(this.state.variantGroups);
+      }
+    } else {
+      this.state.variantGroups = DEFAULT_VARIANT_GROUPS.map((g) => ({ ...g, terms: [...g.terms] }));
+    }
 
     const savedLatex = this.storage.loadLatexOptions();
     this.state.latexOptions = {
@@ -305,14 +322,14 @@ export class Store {
   }
 
   /**
-   * 個別の指摘を無視する
+   * 個別の指摘を無視する。表記揺れ指摘を無視した場合は「こと」等他方への影響を再評価するため再検査する。
    * @param {string} issueId
    */
   ignoreIssue(issueId) {
     const issue = this.state.issues.find((i) => i.id === issueId);
     if (!issue) return;
     this.ignores.ignoreIssue(issue, this.state.text);
-    this._refreshIgnoreFlags();
+    this._afterIgnoreChanged(issue.ruleId);
   }
 
   /**
@@ -323,7 +340,98 @@ export class Store {
     const issue = this.state.issues.find((i) => i.id === issueId);
     if (!issue) return;
     this.ignores.unignoreIssue(issue, this.state.text);
-    this._refreshIgnoreFlags();
+    this._afterIgnoreChanged(issue.ruleId);
+  }
+
+  /**
+   * 複数の表記揺れ出現箇所をまとめて無視する
+   * @param {{ start: number, end: number, term: string }[]} occurrences
+   */
+  ignoreVariantOccurrences(occurrences) {
+    for (const occ of occurrences) {
+      this.ignores.ignoreIssue(
+        {
+          ruleId: 'variant.inconsistency',
+          start: occ.start,
+          end: occ.end,
+          matchedText: occ.term,
+        },
+        this.state.text
+      );
+    }
+    this.storage.saveIgnores(this.ignores.serialize());
+    this.runProofreadNow();
+  }
+
+  /**
+   * 複数の表記揺れ出現箇所の無視をまとめて解除する
+   * @param {{ start: number, end: number, term: string }[]} occurrences
+   */
+  unignoreVariantOccurrences(occurrences) {
+    for (const occ of occurrences) {
+      this.ignores.unignoreIssue(
+        {
+          ruleId: 'variant.inconsistency',
+          start: occ.start,
+          end: occ.end,
+          matchedText: occ.term,
+        },
+        this.state.text
+      );
+    }
+    this.storage.saveIgnores(this.ignores.serialize());
+    this.runProofreadNow();
+  }
+
+  /**
+   * 表記揺れグループ全体を一括で無視する
+   * @param {string} groupId
+   */
+  ignoreVariantGroup(groupId) {
+    this.ignores.ignoreVariantGroup(groupId);
+    this.storage.saveIgnores(this.ignores.serialize());
+    this.runProofreadNow();
+  }
+
+  /**
+   * 表記揺れグループ単位の無視を解除する
+   * @param {string} groupId
+   */
+  unignoreVariantGroup(groupId) {
+    this.ignores.unignoreVariantGroup(groupId);
+    this.storage.saveIgnores(this.ignores.serialize());
+    this.runProofreadNow();
+  }
+
+  /**
+   * 記号・文字種の一括統一変換（すべて全角チルダにする等）を実行する（1回の Undo で復元可能）
+   * @param {string} transformId
+   * @returns {boolean}
+   */
+  runSymbolTransform(transformId) {
+    const transform = getSymbolTransform(transformId);
+    if (!transform) return false;
+
+    if (transform.ruleSettingPatch) {
+      const { ruleId, options } = transform.ruleSettingPatch;
+      const cur = this.state.ruleSettings[ruleId];
+      if (cur) {
+        this.state.ruleSettings[ruleId] = {
+          ...cur,
+          options: { ...cur.options, ...options },
+        };
+        this.storage.saveRuleSettings(this.state.ruleSettings);
+        this.bus.emit('settings:updated', this.state.ruleSettings);
+      }
+    }
+
+    const nextText = transform.apply(this.state.text);
+    if (nextText !== this.state.text) {
+      this.applyBatchTextChange(nextText, transform.label);
+    } else {
+      this.runProofreadNow();
+    }
+    return true;
   }
 
   /**
@@ -341,6 +449,15 @@ export class Store {
    */
   unignoreRule(ruleId) {
     this.ignores.unignoreRule(ruleId);
+    this._refreshIgnoreFlags();
+  }
+
+  _afterIgnoreChanged(ruleId) {
+    if (ruleId === 'variant.inconsistency') {
+      this.storage.saveIgnores(this.ignores.serialize());
+      this.runProofreadNow();
+      return;
+    }
     this._refreshIgnoreFlags();
   }
 

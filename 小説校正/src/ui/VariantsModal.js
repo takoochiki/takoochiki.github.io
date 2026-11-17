@@ -1,10 +1,10 @@
 import { DEFAULT_VARIANT_GROUPS } from '../config/defaultVariants.js';
-import { VariantService } from '../services/VariantService.js';
+import { SYMBOL_TRANSFORMS, VariantService } from '../services/VariantService.js';
 import { escapeHtml } from '../utils/textUtils.js';
 import { createModal } from './modalHelper.js';
 
 /**
- * 表記揺れの一括編集・個別除外付き一括置換・変更プレビュー・辞書登録モーダル
+ * 表記揺れの一括編集・個別/グループ無視・記号文字種の一括変換・辞書登録モーダル
  */
 export class VariantsModal {
   /**
@@ -14,17 +14,19 @@ export class VariantsModal {
   constructor({ store }) {
     this.store = store;
     this.service = new VariantService();
-    this.activeTab = 'unify'; // 'unify' | 'dictionary'
+    this.activeTab = 'unify'; // 'unify' | 'symbols' | 'dictionary'
     this.selectedGroupId = null;
     this.targetTerm = '';
     this.excludedIds = new Set();
     this.showOnlyConflicts = false;
+    this.symbolStatusMsg = '';
 
     this.modal = createModal({
       id: 'variants-modal',
-      title: '表記揺れの一括編集・辞書管理',
+      title: '表記揺れの一括編集・記号変換・辞書管理',
       sizeClass: 'modal--xl',
       onOpen: (groupId) => {
+        this.symbolStatusMsg = '';
         if (groupId) {
           this.activeTab = 'unify';
           this.selectedGroupId = groupId;
@@ -36,7 +38,7 @@ export class VariantsModal {
     });
 
     this.modal.footerEl.innerHTML = `
-      <span class="footer-note">※ 一括置換は1回の Undo (Ctrl+Z) で元に戻せます。</span>
+      <span class="footer-note">※ 一括置換・記号変換は1回の Undo (Ctrl+Z) で元に戻せます。</span>
       <div class="spacer"></div>
       <button type="button" class="btn btn-secondary" id="btn-close-variants">閉じる</button>
     `;
@@ -57,6 +59,7 @@ export class VariantsModal {
       const tabBtn = e.target.closest('button[data-var-tab]');
       if (tabBtn) {
         this.activeTab = tabBtn.dataset.varTab;
+        this.symbolStatusMsg = '';
         this.render();
         return;
       }
@@ -75,6 +78,81 @@ export class VariantsModal {
         this.targetTerm = termBtn.dataset.targetTerm;
         this.excludedIds.clear();
         this.render();
+        return;
+      }
+
+      const toggleGroupIgnoreBtn = e.target.closest('button[data-toggle-group-ignore]');
+      if (toggleGroupIgnoreBtn) {
+        const gid = toggleGroupIgnoreBtn.dataset.toggleGroupIgnore;
+        if (this.store.ignores.isVariantGroupIgnored(gid)) {
+          this.store.unignoreVariantGroup(gid);
+        } else {
+          this.store.ignoreVariantGroup(gid);
+        }
+        this.render();
+        return;
+      }
+
+      const ignoreTermBtn = e.target.closest('button[data-ignore-term]');
+      if (ignoreTermBtn) {
+        const term = ignoreTermBtn.dataset.ignoreTerm;
+        const analysis = this._getSelectedAnalysis();
+        if (analysis) {
+          const occs = analysis.occurrences.filter((o) => o.term === term && !o.ignored);
+          this.store.ignoreVariantOccurrences(occs);
+          this.render();
+        }
+        return;
+      }
+
+      const unignoreTermBtn = e.target.closest('button[data-unignore-term]');
+      if (unignoreTermBtn) {
+        const term = unignoreTermBtn.dataset.unignoreTerm;
+        const analysis = this._getSelectedAnalysis();
+        if (analysis) {
+          const occs = analysis.occurrences.filter((o) => o.term === term && o.ignored);
+          this.store.unignoreVariantOccurrences(occs);
+          this.render();
+        }
+        return;
+      }
+
+      const ignoreOccBtn = e.target.closest('button[data-ignore-occ-id]');
+      if (ignoreOccBtn) {
+        e.preventDefault();
+        e.stopPropagation();
+        const occId = ignoreOccBtn.dataset.ignoreOccId;
+        const analysis = this._getSelectedAnalysis();
+        const occ = analysis?.occurrences.find((o) => o.id === occId);
+        if (occ) {
+          this.store.ignoreVariantOccurrences([occ]);
+          this.render();
+        }
+        return;
+      }
+
+      const unignoreOccBtn = e.target.closest('button[data-unignore-occ-id]');
+      if (unignoreOccBtn) {
+        e.preventDefault();
+        e.stopPropagation();
+        const occId = unignoreOccBtn.dataset.unignoreOccId;
+        const analysis = this._getSelectedAnalysis();
+        const occ = analysis?.occurrences.find((o) => o.id === occId);
+        if (occ) {
+          this.store.unignoreVariantOccurrences([occ]);
+          this.render();
+        }
+        return;
+      }
+
+      const symBtn = e.target.closest('button[data-run-symbol-transform]');
+      if (symBtn) {
+        const tid = symBtn.dataset.runSymbolTransform;
+        const def = SYMBOL_TRANSFORMS.find((t) => t.id === tid);
+        if (def && this.store.runSymbolTransform(tid)) {
+          this.symbolStatusMsg = `「${def.label}」を実行しました（Ctrl+Z で取り消せます）。`;
+          this.render();
+        }
         return;
       }
 
@@ -173,7 +251,8 @@ export class VariantsModal {
   _getAnalyses() {
     return this.service.analyzeAllGroups(
       this.store.state.text,
-      this.store.state.variantGroups
+      this.store.state.variantGroups,
+      this.store.ignores
     );
   }
 
@@ -205,9 +284,15 @@ export class VariantsModal {
     const tabsHtml = `
       <div class="modal-tabs">
         <button type="button" class="cat-tab ${this.activeTab === 'unify' ? 'is-active' : ''}" data-var-tab="unify">表記揺れ一括統一</button>
-        <button type="button" class="cat-tab ${this.activeTab === 'dictionary' ? 'is-active' : ''}" data-var-tab="dictionary">辞書管理・固有名詞登録</button>
+        <button type="button" class="cat-tab ${this.activeTab === 'symbols' ? 'is-active' : ''}" data-var-tab="symbols">記号・文字種の一括変換</button>
+        <button type="button" class="cat-tab ${this.activeTab === 'dictionary' ? 'is-active' : ''}" data-var-tab="dictionary">辞書管理・固有名詞登録 (${this.store.state.variantGroups.length})</button>
       </div>
     `;
+
+    if (this.activeTab === 'symbols') {
+      this._renderSymbolsTab(tabsHtml);
+      return;
+    }
 
     if (this.activeTab === 'dictionary') {
       this._renderDictionaryTab(tabsHtml);
@@ -223,7 +308,7 @@ export class VariantsModal {
     });
 
     const visibleList = this.showOnlyConflicts
-      ? sorted.filter((a) => a.hasConflict)
+      ? sorted.filter((a) => a.hasConflict || a.hasRawConflict)
       : sorted;
 
     if (
@@ -237,12 +322,11 @@ export class VariantsModal {
 
     if (selected) {
       if (!this.targetTerm || !selected.group.terms.includes(this.targetTerm)) {
-        // 出現回数が最多の語または推奨語をデフォルト選択
         if (selected.group.preferred) {
           this.targetTerm = selected.group.preferred;
         } else {
           const top = [...selected.group.terms].sort(
-            (a, b) => (selected.termStats[b] || 0) - (selected.termStats[a] || 0)
+            (a, b) => (selected.activeTermStats[b] || 0) - (selected.activeTermStats[a] || 0)
           )[0];
           this.targetTerm = top || selected.group.terms[0] || '';
         }
@@ -254,13 +338,25 @@ export class VariantsModal {
         ? visibleList
             .map((a) => {
               const statsSummary = a.group.terms
-                .map((t) => `${t}: ${a.termStats[t] || 0}`)
+                .map((t) => {
+                  const total = a.termStats[t] || 0;
+                  const ign = a.ignoredTermStats[t] || 0;
+                  return ign > 0 ? `${t}: ${total}(無視${ign})` : `${t}: ${total}`;
+                })
                 .join(' / ');
+              const badgeHtml = a.groupIgnored
+                ? '<span class="badge badge--muted">グループ無視</span>'
+                : a.hasConflict
+                ? '<span class="badge badge--warning">揺れ</span>'
+                : a.ignoredCount > 0 && a.hasRawConflict
+                ? '<span class="badge badge--muted">無視済</span>'
+                : '';
+
               return `
                 <button type="button" class="var-group-item ${a.group.id === this.selectedGroupId ? 'is-active' : ''} ${a.hasConflict ? 'has-conflict' : ''}" data-group-id="${escapeHtml(a.group.id)}">
                   <div class="var-group-title">
                     <span>${escapeHtml(a.group.label)}</span>
-                    ${a.hasConflict ? '<span class="badge badge--warning">揺れ</span>' : ''}
+                    ${badgeHtml}
                   </div>
                   <div class="var-group-counts">${escapeHtml(statsSummary)}</div>
                 </button>
@@ -309,13 +405,46 @@ export class VariantsModal {
       })
       .join('');
 
+    const termIgnoreBtnsHtml = selected.group.terms
+      .filter((t) => (selected.termStats[t] || 0) > 0)
+      .map((t) => {
+        const activeCnt = selected.activeTermStats[t] || 0;
+        const ignoredCnt = selected.ignoredTermStats[t] || 0;
+        const parts = [];
+        if (activeCnt > 0 && !selected.groupIgnored) {
+          parts.push(
+            `<button type="button" class="btn btn-xs btn-ghost" data-ignore-term="${escapeHtml(t)}">「${escapeHtml(t)}」(${activeCnt}件)を無視</button>`
+          );
+        }
+        if (ignoredCnt > 0 && !selected.groupIgnored) {
+          parts.push(
+            `<button type="button" class="btn btn-xs btn-secondary" data-unignore-term="${escapeHtml(t)}">「${escapeHtml(t)}」の無視を解除(${ignoredCnt}件)</button>`
+          );
+        }
+        return parts.join('');
+      })
+      .join('');
+
     pane.innerHTML = `
       <div class="var-detail-header">
-        <h3>${escapeHtml(selected.group.label)}</h3>
+        <div class="var-detail-title-row">
+          <h3>${escapeHtml(selected.group.label)}</h3>
+          <button type="button" class="btn btn-xs ${selected.groupIgnored ? 'btn-secondary' : 'btn-ghost'}" data-toggle-group-ignore="${escapeHtml(selected.group.id)}">
+            ${selected.groupIgnored ? 'このグループの無視を解除' : 'このグループ全体を無視'}
+          </button>
+        </div>
         <div class="var-target-selector">
           <span class="var-step-label">統一先の表記を選択:</span>
           <div class="var-term-buttons">${termBtnsHtml}</div>
         </div>
+        ${
+          termIgnoreBtnsHtml
+            ? `<div class="var-ignore-bar">
+                <span class="var-step-label">表記ごとの無視設定（少数派を無視すると他方の警告も止まります）:</span>
+                <div class="var-term-buttons">${termIgnoreBtnsHtml}</div>
+              </div>`
+            : ''
+        }
       </div>
       <div id="variants-preview-section"></div>
     `;
@@ -347,13 +476,21 @@ export class VariantsModal {
     const targetsHtml = preview.targets
       .map((occ) => {
         const checked = !this.excludedIds.has(occ.id);
+        const ignoreBtn = occ.ignored
+          ? `<button type="button" class="btn btn-xs btn-secondary var-occ-ignore-btn" data-unignore-occ-id="${escapeHtml(occ.id)}">無視解除</button>`
+          : `<button type="button" class="btn btn-xs btn-ghost var-occ-ignore-btn" data-ignore-occ-id="${escapeHtml(occ.id)}">無視</button>`;
+
         return `
-          <label class="var-occ-row ${checked ? '' : 'is-excluded'}">
-            <input type="checkbox" data-occ-id="${escapeHtml(occ.id)}" ${checked ? 'checked' : ''} />
-            <span class="var-occ-line">${occ.line}行</span>
-            <span class="var-occ-snippet">${escapeHtml(occ.snippet.before)}<mark class="snip-hit">${escapeHtml(occ.snippet.target)}</mark>${escapeHtml(occ.snippet.after)}</span>
-            <span class="var-occ-arrow">→ <strong>${escapeHtml(this.targetTerm)}</strong></span>
-          </label>
+          <div class="var-occ-row ${checked ? '' : 'is-excluded'} ${occ.ignored ? 'is-ignored-occ' : ''}">
+            <label class="var-occ-check-area">
+              <input type="checkbox" data-occ-id="${escapeHtml(occ.id)}" ${checked ? 'checked' : ''} />
+              <span class="var-occ-line">${occ.line}行</span>
+              <span class="var-occ-snippet">${escapeHtml(occ.snippet.before)}<mark class="snip-hit">${escapeHtml(occ.snippet.target)}</mark>${escapeHtml(occ.snippet.after)}</span>
+              <span class="var-occ-arrow">→ <strong>${escapeHtml(this.targetTerm)}</strong></span>
+            </label>
+            ${occ.ignored ? '<span class="badge badge--muted">無視中</span>' : ''}
+            ${ignoreBtn}
+          </div>
         `;
       })
       .join('');
@@ -389,6 +526,45 @@ export class VariantsModal {
           選択した ${preview.activeCount} 箇所を「${escapeHtml(this.targetTerm)}」に一括置換
         </button>
       </div>
+    `;
+  }
+
+  _renderSymbolsTab(tabsHtml) {
+    const text = this.store.state.text;
+    const ruleSettings = this.store.state.ruleSettings;
+
+    const cardsHtml = SYMBOL_TRANSFORMS.map((t) => {
+      const count = t.countMatches(text);
+      let isCurrentStandard = false;
+      if (t.ruleSettingPatch) {
+        const { ruleId, options } = t.ruleSettingPatch;
+        const curOpts = ruleSettings[ruleId]?.options || {};
+        isCurrentStandard = Object.entries(options).every(([k, v]) => curOpts[k] === v);
+      }
+
+      const canRun = count > 0 || Boolean(t.ruleSettingPatch && !isCurrentStandard);
+
+      return `
+        <div class="symbol-transform-card">
+          <div class="symbol-transform-info">
+            <div class="symbol-transform-title">
+              <strong>${escapeHtml(t.label)}</strong>
+              ${isCurrentStandard ? '<span class="badge badge--success">現在の標準設定</span>' : ''}
+              <span class="badge ${count > 0 ? 'badge--warning' : 'badge--muted'}">対象 ${count}件</span>
+            </div>
+            <p class="symbol-transform-desc">${escapeHtml(t.description)}</p>
+          </div>
+          <button type="button" class="btn btn-sm ${count > 0 ? 'btn-primary' : 'btn-secondary'}" data-run-symbol-transform="${escapeHtml(t.id)}" ${canRun ? '' : 'disabled'}>
+            ${count > 0 ? `${count}箇所を一括変換` : isCurrentStandard ? '統一済み' : '標準に設定'}
+          </button>
+        </div>
+      `;
+    }).join('');
+
+    this.modal.bodyEl.innerHTML = `
+      ${tabsHtml}
+      ${this.symbolStatusMsg ? `<div class="symbol-status-banner">${escapeHtml(this.symbolStatusMsg)}</div>` : ''}
+      <div class="symbol-transform-list">${cardsHtml}</div>
     `;
   }
 
@@ -462,7 +638,7 @@ export class VariantsModal {
         </table>
       </div>
       <div class="dict-actions">
-        <button type="button" class="btn btn-xs btn-ghost" id="btn-reset-default-variants">初期辞書（22語群）に戻す</button>
+        <button type="button" class="btn btn-xs btn-ghost" id="btn-reset-default-variants">初期辞書（${DEFAULT_VARIANT_GROUPS.length}語群）に戻す</button>
       </div>
     `;
   }

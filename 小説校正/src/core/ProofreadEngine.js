@@ -72,6 +72,7 @@ export class ProofreadEngine {
       variantGroups,
       display,
       allSettings: ruleSettings,
+      ignoreManager: this.ignoreManager,
     });
 
     const collected = [];

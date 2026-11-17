@@ -35,6 +35,7 @@
 
       <div class="toolbar-group" aria-label="表示切替">
         <button type="button" class="btn btn-sm btn-secondary" id="btn-writing-mode" title="縦書き/横書きを切り替え (Alt+V)">横書き中 ⇄ 縦書きへ</button>
+        <button type="button" class="btn btn-sm btn-ghost" id="btn-reset-split" title="編集領域と校正プレビューの分割比率を 1:1 に戻す">比率 1:1</button>
         <button type="button" class="btn btn-sm btn-ghost is-active" id="btn-sync-scroll" title="編集・校正領域のスクロール同期を切替">スクロール同期: ON</button>
         <button type="button" class="btn btn-sm btn-ghost" id="btn-theme-toggle" title="ライト/ダークテーマを切替">🌙 ダーク</button>
       </div>
@@ -84,6 +85,7 @@
           class="split-resizer"
           role="separator"
           aria-label="分割比率を調整"
+          title="ドラッグで分割比率を変更 / ダブルクリックで 1:1 に戻す"
           tabindex="0"
         ></div>
 

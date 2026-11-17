@@ -16,6 +16,19 @@ const VERTICAL_COMPAT_MAP = {
   '︱': '―', '︙': '…',
 };
 
+const HYPHEN_CHAR_LABEL = {
+  '-': '半角ハイフン「-」(U+002D)',
+  '‐': '全角ハイフン「‐」(U+2010)',
+  '−': '全角マイナス「−」(U+2212)',
+  '–': 'ENダッシュ「–」(U+2013)',
+};
+
+function classifyAlnumKind(str) {
+  if (/^[0-9０-９]+$/.test(str)) return '数字';
+  if (/^[A-Za-zＡ-Ｚａ-ｚ]+$/.test(str)) return '英字';
+  return '英数字';
+}
+
 /**
  * 範囲が URL / メールアドレス内に含まれるか判定する
  */
@@ -67,7 +80,7 @@ export const characterRules = [
           ctx.createIssue({
             start,
             end,
-            message: `半角英数字「${m[0]}」が使用されています。`,
+            message: `半角${classifyAlnumKind(m[0])}「${m[0]}」が使用されています。`,
             suggestions,
           })
         );
@@ -92,7 +105,7 @@ export const characterRules = [
           ctx.createIssue({
             start: m.index,
             end: m.index + m[0].length,
-            message: `全角英数字「${m[0]}」が使用されています。`,
+            message: `全角${classifyAlnumKind(m[0])}「${m[0]}」が使用されています。`,
             suggestions: [{ label: `半角「${half}」に変換`, replacement: half }],
           })
         );
@@ -163,6 +176,11 @@ export const characterRules = [
             end: m.index + m[0].length,
             message: `半角カタカナ「${m[0]}」が使われています。`,
             suggestions: [{ label: `全角「${full}」に変換`, replacement: full }],
+            extra: {
+              batchTransforms: [
+                { id: 'half-kana-to-full', label: '原稿内の半角カタカナをすべて全角に変換' },
+              ],
+            },
           })
         );
       });
@@ -462,11 +480,13 @@ export const characterRules = [
       const issues = [];
       for (const m of matches) {
         if (m.ch !== preferred) {
+          const chLabel = HYPHEN_CHAR_LABEL[m.ch] || `文字「${m.ch}」`;
+          const prefLabel = HYPHEN_CHAR_LABEL[preferred] || `文字「${preferred}」`;
           issues.push(
             ctx.createIssue({
               start: m.start,
               end: m.end,
-              message: `ハイフン類（${[...foundChars].join(' / ')}）が混在しています。`,
+              message: `${chLabel}が使われています（標準設定: ${prefLabel}）。ハイフン類の混在に注意してください。`,
               suggestions: [{ label: `「${preferred}」に統一`, replacement: preferred }],
             })
           );
@@ -539,6 +559,11 @@ export const characterRules = [
             end: m.index + 1,
             message: `半角括弧「${m[0]}」が使われています。和文中では全角括弧「${full}」を推奨します。`,
             suggestions: [{ label: `全角「${full}」に変換`, replacement: full }],
+            extra: {
+              batchTransforms: [
+                { id: 'half-paren-to-full', label: '半角丸括弧「()」をすべて全角「（）」に変換' },
+              ],
+            },
           })
         );
       });

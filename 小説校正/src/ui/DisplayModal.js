@@ -44,6 +44,13 @@ export class DisplayModal {
       this.modal.close();
     });
 
+    this.modal.bodyEl.addEventListener('click', (e) => {
+      if (e.target.id === 'btn-disp-reset-split') {
+        this.store.updateDisplaySettings({ splitRatio: 0.5 });
+        this.render();
+      }
+    });
+
     this.modal.bodyEl.addEventListener('change', (e) => {
       const target = e.target;
       if (target.name === 'writingMode') {
@@ -128,6 +135,14 @@ export class DisplayModal {
         <div class="form-group">
           <label class="form-label" for="disp-line-height">行間: <strong id="disp-line-height-val">${Number(d.lineHeight).toFixed(2)}</strong></label>
           <input type="range" id="disp-line-height" min="1.4" max="2.6" step="0.05" value="${d.lineHeight}" />
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">画面分割比率（編集 : 校正プレビュー）</label>
+          <div class="radio-group">
+            <span>現在: <strong>${Math.round((d.splitRatio ?? 0.5) * 100)}% : ${Math.round((1 - (d.splitRatio ?? 0.5)) * 100)}%</strong></span>
+            <button type="button" class="btn btn-xs btn-secondary" id="btn-disp-reset-split" ${Math.abs((d.splitRatio ?? 0.5) - 0.5) < 0.005 ? 'disabled' : ''}>1:1 に戻す</button>
+          </div>
         </div>
 
         <div class="form-group">

@@ -301,7 +301,7 @@ export const patternRules = [
     id: 'pattern.editor-comment',
     name: '編集用コメント・マーカーの残存',
     category: 'patterns',
-    description: '「// ...」「<!-- ... -->」「【注：...】」「※...」などの編集用メモ・コメント残存を検出します。',
+    description: '「// ...」「<!-- ... -->」「【注：...】」などの編集用メモ・コメント残存を検出します。',
     defaultSeverity: 'error',
     defaultEnabled: true,
     defaultOptions: {},

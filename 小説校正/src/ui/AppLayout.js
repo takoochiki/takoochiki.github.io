@@ -110,6 +110,9 @@ export class AppLayout {
 
     this.resizer.addEventListener('pointerup', endDrag);
     this.resizer.addEventListener('pointercancel', endDrag);
+    this.resizer.addEventListener('dblclick', () => {
+      this.store.updateDisplaySettings({ splitRatio: 0.5 });
+    });
   }
 
   _subscribeStore() {

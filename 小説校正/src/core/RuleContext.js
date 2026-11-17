@@ -17,6 +17,7 @@ export class RuleContext {
    * @param {any[]} [config.variantGroups] - 表記揺れ辞書
    * @param {Record<string, any>} [config.display] - 表示設定（縦書き/横書き等）
    * @param {Record<string, any>} [config.allSettings] - ルール設定全体
+   * @param {import('./IgnoreManager.js').IgnoreManager | null} [config.ignoreManager] - 無視状態マネージャー
    */
   constructor(text, config = {}) {
     this.text = normalizeLineEndings(text);
@@ -24,6 +25,7 @@ export class RuleContext {
     this.variantGroups = Array.isArray(config.variantGroups) ? config.variantGroups : [];
     this.display = config.display || {};
     this.allSettings = config.allSettings || {};
+    this.ignoreManager = config.ignoreManager || null;
 
     this.lines = this._parseLines(this.text);
     this.paragraphs = this._parseParagraphs(this.lines);

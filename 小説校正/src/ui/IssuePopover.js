@@ -118,6 +118,14 @@ export class IssuePopover {
         const groupId = btn.dataset.groupId || '';
         this.hide();
         this.onOpenVariants(groupId);
+        return;
+      }
+      if (action === 'batch-transform') {
+        const transformId = btn.dataset.transformId || '';
+        if (transformId) {
+          this.store.runSymbolTransform(transformId);
+          this.hide();
+        }
       }
     });
 
@@ -195,6 +203,18 @@ export class IssuePopover {
           ? `<button type="button" class="btn btn-xs btn-secondary" data-action="open-variants" data-group-id="${escapeHtml(issue.extra.variantGroupId)}">一括統一を開く</button>`
           : '';
 
+        const batchTransformsHtml =
+          mode === 'pinned' && Array.isArray(issue.extra?.batchTransforms) && issue.extra.batchTransforms.length > 0
+            ? `<div class="popover-batch-transforms">
+                ${issue.extra.batchTransforms
+                  .map(
+                    (bt) =>
+                      `<button type="button" class="btn btn-xs btn-secondary" data-action="batch-transform" data-transform-id="${escapeHtml(bt.id)}">${escapeHtml(bt.label)}</button>`
+                  )
+                  .join('')}
+              </div>`
+            : '';
+
         const ignoreControls =
           mode === 'pinned'
             ? `<div class="popover-actions">
@@ -218,6 +238,7 @@ export class IssuePopover {
             <p class="popover-message">${escapeHtml(issue.message)}</p>
             <div class="popover-matched">対象: <code>${escapeHtml(issue.matchedText.replace(/\n/g, '↵'))}</code></div>
             ${mode === 'pinned' ? suggestionsHtml : this._renderHoverSuggestionHint(issue)}
+            ${batchTransformsHtml}
             ${ignoreControls}
           </div>
         `;

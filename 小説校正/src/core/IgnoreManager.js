@@ -3,7 +3,8 @@ import { createId } from '../utils/textUtils.js';
 const CONTEXT_LEN = 12;
 
 /**
- * 無視された指摘・無視されたルールを管理し、編集後も可能な限り無視状態を追跡する。
+ * 無視された指摘・無視されたルール・無視された表記揺れグループを管理し、
+ * 編集後も可能な限り無視状態を追跡する。
  */
 export class IgnoreManager {
   constructor() {
@@ -11,11 +12,13 @@ export class IgnoreManager {
     this.items = [];
     /** @type {Set<string>} */
     this.ignoredRuleIds = new Set();
+    /** @type {Set<string>} */
+    this.ignoredVariantGroupIds = new Set();
   }
 
   /**
    * 永続化データから復元する
-   * @param {{ items?: any[], ignoredRuleIds?: string[] } | null} data
+   * @param {{ items?: any[], ignoredRuleIds?: string[], ignoredVariantGroupIds?: string[] } | null} data
    */
   load(data) {
     if (!data || typeof data !== 'object') {
@@ -34,22 +37,27 @@ export class IgnoreManager {
         }))
       : [];
     this.ignoredRuleIds = new Set(Array.isArray(data.ignoredRuleIds) ? data.ignoredRuleIds : []);
+    this.ignoredVariantGroupIds = new Set(
+      Array.isArray(data.ignoredVariantGroupIds) ? data.ignoredVariantGroupIds : []
+    );
   }
 
   /**
    * 永続化・プロジェクト保存用にシリアライズする
-   * @returns {{ items: any[], ignoredRuleIds: string[] }}
+   * @returns {{ items: any[], ignoredRuleIds: string[], ignoredVariantGroupIds: string[] }}
    */
   serialize() {
     return {
       items: this.items.map((item) => ({ ...item })),
       ignoredRuleIds: [...this.ignoredRuleIds],
+      ignoredVariantGroupIds: [...this.ignoredVariantGroupIds],
     };
   }
 
   clear() {
     this.items = [];
     this.ignoredRuleIds = new Set();
+    this.ignoredVariantGroupIds = new Set();
   }
 
   /**
@@ -96,6 +104,31 @@ export class IgnoreManager {
    */
   unignoreRule(ruleId) {
     this.ignoredRuleIds.delete(ruleId);
+  }
+
+  /**
+   * 表記揺れグループ単位で無視する
+   * @param {string} groupId
+   */
+  ignoreVariantGroup(groupId) {
+    this.ignoredVariantGroupIds.add(groupId);
+  }
+
+  /**
+   * 表記揺れグループ単位の無視を解除する
+   * @param {string} groupId
+   */
+  unignoreVariantGroup(groupId) {
+    this.ignoredVariantGroupIds.delete(groupId);
+  }
+
+  /**
+   * 表記揺れグループが無視中か判定する
+   * @param {string} groupId
+   * @returns {boolean}
+   */
+  isVariantGroupIgnored(groupId) {
+    return this.ignoredVariantGroupIds.has(groupId);
   }
 
   /**
@@ -167,7 +200,10 @@ export class IgnoreManager {
    */
   applyIgnoreFlags(issues, text) {
     return issues.map((issue) => {
-      if (this.ignoredRuleIds.has(issue.ruleId)) {
+      if (
+        this.ignoredRuleIds.has(issue.ruleId) ||
+        (issue.extra?.variantGroupId && this.ignoredVariantGroupIds.has(issue.extra.variantGroupId))
+      ) {
         return { ...issue, ignored: true };
       }
       const matched = this.findMatchingEntry(issue, text);

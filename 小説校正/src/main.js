@@ -50,6 +50,7 @@ function bootstrap() {
   const dropOverlay = document.getElementById('drop-overlay');
 
   const btnWritingMode = document.getElementById('btn-writing-mode');
+  const btnResetSplit = document.getElementById('btn-reset-split');
   const btnSyncScroll = document.getElementById('btn-sync-scroll');
   const btnThemeToggle = document.getElementById('btn-theme-toggle');
   const btnUndo = document.getElementById('btn-undo');
@@ -101,6 +102,8 @@ function bootstrap() {
     const isVertical = d.writingMode === 'vertical';
     btnWritingMode.textContent = isVertical ? '縦書き中 ⇄ 横書きへ' : '横書き中 ⇄ 縦書きへ';
     btnWritingMode.classList.toggle('is-active', isVertical);
+
+    btnResetSplit.disabled = Math.abs((d.splitRatio ?? 0.5) - 0.5) < 0.005;
 
     btnSyncScroll.textContent = d.syncScroll ? 'スクロール同期: ON' : 'スクロール同期: OFF';
     btnSyncScroll.classList.toggle('is-active', d.syncScroll);
@@ -193,6 +196,10 @@ function bootstrap() {
     const next = store.state.displaySettings.writingMode === 'vertical' ? 'horizontal' : 'vertical';
     store.updateDisplaySettings({ writingMode: next });
     issuePopover.hide();
+  });
+
+  btnResetSplit.addEventListener('click', () => {
+    store.updateDisplaySettings({ splitRatio: 0.5 });
   });
 
   btnSyncScroll.addEventListener('click', () => {

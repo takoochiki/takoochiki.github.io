@@ -209,3 +209,92 @@ Deno.test('非機能要件: 20万字の大規模原稿でも実用時間内に�
   });
   assert(res.durationMs < 2500, `20万字の校正時間が長すぎます: ${res.durationMs}ms`);
 });
+
+Deno.test('表記揺れ: 物/もの除外、少数派無視で他方の警告も解消、グループ無視', () => {
+  // 「物」と「もの」が混在してもデフォルト辞書では警告されない
+  const monoText = '　それは大切な物だ。あちらは別のものだ。';
+  const { store: monoStore } = createTestStore(monoText);
+  const monoIssues = monoStore.state.issues.filter((i) => i.ruleId === 'variant.inconsistency');
+  assertEquals(monoIssues.length, 0);
+
+  // 「こと」20回、「事」1回
+  const text = '　' + 'そういうことだ。'.repeat(20) + '大事な事だ。';
+  const { store } = createTestStore(text);
+
+  const beforeVarIssues = store.state.issues.filter((i) => i.ruleId === 'variant.inconsistency');
+  assertEquals(beforeVarIssues.length, 21);
+
+  const kotoKanjiIssue = beforeVarIssues.find((i) => i.matchedText === '事');
+  assertExists(kotoKanjiIssue);
+
+  // 「事」1箇所を無視する
+  store.ignoreIssue(kotoKanjiIssue.id);
+
+  // 有効な未対応表記揺れ警告が0件になり、20箇所の「こと」警告が消えること
+  const unhandledVar = store.state.issues.filter(
+    (i) => i.ruleId === 'variant.inconsistency' && !i.ignored
+  );
+  const ignoredVar = store.state.issues.filter(
+    (i) => i.ruleId === 'variant.inconsistency' && i.ignored
+  );
+  assertEquals(unhandledVar.length, 0);
+  assertEquals(ignoredVar.length, 1);
+  assertEquals(ignoredVar[0].matchedText, '事');
+
+  // グループ単位の無視と解除
+  const { store: grpStore } = createTestStore('　出来ることなら、できる限り。');
+  assert(grpStore.state.issues.some((i) => i.ruleId === 'variant.inconsistency' && !i.ignored));
+  grpStore.ignoreVariantGroup('var_dekiru');
+  assertEquals(
+    grpStore.state.issues.filter((i) => i.ruleId === 'variant.inconsistency' && !i.ignored).length,
+    0
+  );
+  grpStore.unignoreVariantGroup('var_dekiru');
+  assert(grpStore.state.issues.some((i) => i.ruleId === 'variant.inconsistency' && !i.ignored));
+});
+
+Deno.test('波ダッシュ・全角チルダの正確な名称表示と一括変換・Undo', () => {
+  const text = '　春から秋～冬〜春へ。';
+  const { store } = createTestStore(text);
+
+  const waveIssue = store.state.issues.find((i) => i.ruleId === 'punct.wave-dash-mix');
+  assertExists(waveIssue);
+  assert(
+    waveIssue.message.includes('全角チルダ「～」(U+FF5E)が使われています'),
+    `実際のメッセージ: ${waveIssue.message}`
+  );
+  assert(waveIssue.message.includes('標準設定: 波ダッシュ「〜」(U+301C)'));
+
+  // すべて全角チルダへ一括変換
+  store.runSymbolTransform('to-fullwidth-tilde');
+  assertEquals(store.state.text, '　春から秋～冬～春へ。');
+  assertEquals(
+    store.state.ruleSettings['punct.wave-dash-mix'].options.preferredChar,
+    '～'
+  );
+  assertEquals(
+    store.state.issues.filter((i) => i.ruleId === 'punct.wave-dash-mix').length,
+    0
+  );
+
+  // 1回の Undo で原稿が元に戻ること
+  store.undo();
+  assertEquals(store.state.text, text);
+});
+
+Deno.test('段落の文字数上限: 500文字までは許可し、501文字以上で警告', () => {
+  const p500 = '　' + 'あ'.repeat(499);
+  const p501 = '　' + 'あ'.repeat(500);
+
+  const { store: s500 } = createTestStore(p500);
+  assertEquals(
+    s500.state.issues.filter((i) => i.ruleId === 'para.max-length').length,
+    0
+  );
+
+  const { store: s501 } = createTestStore(p501);
+  assertEquals(
+    s501.state.issues.filter((i) => i.ruleId === 'para.max-length').length,
+    1
+  );
+});

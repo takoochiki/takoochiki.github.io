@@ -16,22 +16,33 @@ export const variantRules = [
     defaultOptions: {},
     optionSchema: [],
     check(ctx) {
-      const analyses = variantService.analyzeAllGroups(ctx.text, ctx.variantGroups);
+      const analyses = variantService.analyzeAllGroups(
+        ctx.text,
+        ctx.variantGroups,
+        ctx.ignoreManager
+      );
       const issues = [];
 
       for (const analysis of analyses) {
-        if (!analysis.hasConflict) continue;
-        const { group, termStats, activeTerms, occurrences } = analysis;
-        const summary = activeTerms
-          .map((t) => `「${t}」(${termStats[t]}回)`)
+        const { group, activeTermStats, activeTerms, allPresentTerms, hasConflict, occurrences } =
+          analysis;
+
+        // 有効（未無視）な表記間で競合がない場合でも、無視済みとして記録されている出現箇所は
+        // 「無視済」タブから解除できるよう保持し、他方の有効表記（例：「こと」20回）の警告は出さない。
+        const summaryTerms = activeTerms.length > 0 ? activeTerms : allPresentTerms;
+        const summary = summaryTerms
+          .map((t) => `「${t}」(${activeTermStats[t] ?? analysis.termStats[t]}回)`)
           .join(' / ');
 
         for (const occ of occurrences) {
-          if (group.preferred && occ.term === group.preferred) continue;
+          if (!hasConflict && !occ.ignored) continue;
+          if (!occ.ignored && group.preferred && occ.term === group.preferred) continue;
 
           const targetCandidates = group.preferred
             ? [group.preferred]
-            : activeTerms.filter((t) => t !== occ.term);
+            : (activeTerms.length > 1 ? activeTerms : allPresentTerms).filter(
+                (t) => t !== occ.term
+              );
 
           const suggestions = targetCandidates.map((target) => ({
             label: `「${target}」に統一`,

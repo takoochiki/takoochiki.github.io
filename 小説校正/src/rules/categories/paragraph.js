@@ -420,12 +420,12 @@ export const paragraphRules = [
     description: '1段落の文字数が設定上限を超えている箇所を検出します（読みやすさ確認用）。',
     defaultSeverity: 'warning',
     defaultEnabled: true,
-    defaultOptions: { maxChars: 250 },
+    defaultOptions: { maxChars: 500 },
     optionSchema: [
       { key: 'maxChars', label: '1段落の最大文字数', type: 'number', min: 50, max: 2000 },
     ],
     check(ctx, opts) {
-      const maxChars = Math.max(50, Number(opts.maxChars ?? 250));
+      const maxChars = Math.max(50, Number(opts.maxChars ?? 500));
       const issues = [];
       for (const line of ctx.lines) {
         if (line.isBlank) continue;
